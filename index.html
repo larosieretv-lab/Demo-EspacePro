@@ -33,11 +33,11 @@
     --rule-2:  #D8C4CF;
     --ink:     #310C25;
     --ink-2:   #6B4A5D;
-    --ink-3:   #977C8B;
+    --ink-3:   #7F6574;   /* RGAA : 5,2:1 sur blanc et 4,5:1 sur paper-3 */
 
     --ok:      #0E7053;
     --ok-bg:   #E4F2EC;
-    --wait:    #8A6D00;
+    --wait:    #876A00;   /* RGAA : 4,6:1 sur wait-bg */
     --wait-bg: #FBF3D4;
     --stop:    #C0102C;
     --stop-bg: #FBE7EA;
@@ -81,10 +81,10 @@
   :root[data-theme="light"] {
     --paper:#FFFFFF; --paper-2:#FBF7F9; --paper-3:#F4ECF0;
     --rule:#EADFE5; --rule-2:#D8C4CF;
-    --ink:#310C25; --ink-2:#6B4A5D; --ink-3:#977C8B; --plum-text:#3E1832;
+    --ink:#310C25; --ink-2:#6B4A5D; --ink-3:#7F6574; --plum-text:#3E1832;
     --rose:#E71B7B; --rose-deep:#BB1663;
     --ok:#0E7053; --ok-bg:#E4F2EC;
-    --wait:#8A6D00; --wait-bg:#FBF3D4;
+    --wait:#876A00; --wait-bg:#FBF3D4;
     --stop:#C0102C; --stop-bg:#FBE7EA;
     --info:#14748F; --info-bg:#E2F4FA;
   }
@@ -233,8 +233,9 @@
     border-radius: var(--r); border: 1px solid transparent;
     transition: background .16s, border-color .16s, color .16s;
   }
-  .btn-1 { background: var(--rose); color: #fff; }
-  .btn-1:hover { background: var(--rose-deep); }
+  /* RGAA : blanc sur rose vif = 4.34:1, insuffisant. Le rose foncé donne 6.16:1. */
+  .btn-1 { background: var(--rose-deep); color: #fff; }
+  .btn-1:hover { background: #96114F; }
   .btn-2 { background: transparent; border-color: var(--rule-2); color: var(--ink); }
   .btn-2:hover { border-color: var(--ink); }
   .btn-ok { background: transparent; border-color: var(--ok); color: var(--ok); }
@@ -287,7 +288,8 @@
 
   .profilecard { border-top: 2px solid var(--ink); padding-top: 20px; display: flex; flex-direction: column; gap: 11px; }
   .profilecard.off { border-top-color: var(--rule-2); }
-  .profilecard.off h3, .profilecard.off p { color: var(--ink-3); }
+  .profilecard.off h2, .profilecard.off p { color: var(--ink-3); }
+  .profilecard h2 { font-size: 17px; letter-spacing: -.01em; }  /* garde l'allure du h3 */
   .profilecard .n { font-size: 13px; color: var(--rose); font-weight: 500; }
   .profilecard.off .n { color: var(--ink-3); }
 
@@ -299,6 +301,23 @@
     border-top: 1px solid var(--rule); margin-top: 60px; padding: 22px 0 0;
     font-size: 12.5px; color: var(--ink-3); display: flex; gap: 18px; justify-content: space-between; flex-wrap: wrap;
   }
+
+
+  /* WCAG 2.4.1 — lien d'évitement, visible seulement au clavier */
+  .skip {
+    position: absolute; left: 8px; top: -60px; z-index: 100;
+    background: var(--plum); color: #fff; padding: 10px 16px;
+    border-radius: var(--r); font-size: 14px; font-weight: 500; text-decoration: none;
+    transition: top .15s;
+  }
+  .skip:focus { top: 8px; }
+
+  /* lignes de résultat actionnables : de vrais boutons, atteignables au clavier */
+  button.row {
+    width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--rule);
+    background: transparent; font: inherit; color: inherit; cursor: pointer;
+  }
+  button.row:hover { background: var(--paper-2); }
 
   .toasts { position: fixed; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 9px; z-index: 60; }
   .toast {
@@ -324,6 +343,7 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Aller au contenu principal</a>
 <div class="notice">
   <div class="in">
     <b>Démonstration</b>
@@ -365,7 +385,7 @@
   </div>
 </header>
 
-<main id="main"></main>
+<main id="main" tabindex="-1"></main>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -532,18 +552,18 @@
     <div class="cols3">
       <div class="profilecard">
         <span class="n">Ouvert</span>
-        <h3>Vous êtes propriétaire</h3>
+        <h2>Vous êtes propriétaire</h2>
         <p style="font-size:14.5px;color:var(--ink-2)">Vous louez un meublé sur la commune. Déclarez vos biens, déposez vos pièces, suivez votre adhésion à la saison.</p>
         <div style="margin-top:6px"><button class="btn btn-1" data-go="connexion">Entrer dans mon espace</button></div>
       </div>
       <div class="profilecard off">
         <span class="n">Phase 2</span>
-        <h3>Vous êtes socioprofessionnel</h3>
+        <h2>Vous êtes socioprofessionnel</h2>
         <p style="font-size:14.5px">Vérification du SIRET, plusieurs établissements sous une même structure, adhésion facturée au barème.</p>
       </div>
       <div class="profilecard off">
         <span class="n">Phase 2</span>
-        <h3>Vous travaillez à l'office</h3>
+        <h2>Vous travaillez à l'office</h2>
         <p style="font-size:14.5px">Espace interne : documents, plannings de saison, ressources de l'équipe.</p>
       </div>
     </div>
@@ -568,12 +588,12 @@
       <div class="panel stack" style="gap:17px">
         <div class="stack" style="gap:6px">
           <label for="f-mail" style="font-size:13.5px;font-weight:500;color:var(--ink)">Adresse e-mail</label>
-          <input id="f-mail" type="email" value="c.ravanel@example.fr" readonly
+          <input id="f-mail" type="email" autocomplete="email" value="c.ravanel@example.fr" readonly
             style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
         </div>
         <div class="stack" style="gap:6px">
           <label for="f-pwd" style="font-size:13.5px;font-weight:500;color:var(--ink)">Mot de passe</label>
-          <input id="f-pwd" type="password" value="demonstration" readonly
+          <input id="f-pwd" type="password" autocomplete="current-password" value="demonstration" readonly
             style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
           <span class="small">Le collage est autorisé. Un gestionnaire de mots de passe est un allié, pas une menace.</span>
         </div>
@@ -769,7 +789,7 @@
 
       <div class="section">
         <div class="bar"><h2>Pièces justificatives</h2><span class="count">${l.docs.length}</span></div>
-        <div class="tablewrap"><table><thead><tr><th>Pièce</th><th>Fichier</th><th>Statut</th><th></th></tr></thead><tbody>${docRows}</tbody></table></div>
+        <div class="tablewrap"><table><th scope="col"ead><tr><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col">Statut</th><th scope="col"></th></tr></thead><tbody>${docRows}</tbody></table></div>
         <p class="small" style="margin-top:16px">Les fichiers ne sont ni en base de données ni publics : stockage privé à Paris, accès par lien signé de courte durée, vérifié contre le compte qui le demande.</p>
       </div>`;
   };
@@ -905,7 +925,7 @@
       <div class="section" style="margin-top:0">
         <div class="bar"><h2>Pièces en attente</h2><span class="count">${q.length}</span></div>
         ${q.length
-          ? `<div class="tablewrap"><table><thead><tr><th>Logement</th><th>Pièce</th><th>Fichier</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+          ? `<div class="tablewrap"><table><th scope="col"ead><tr><th scope="col">Logement</th><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col"></th></tr></thead><tbody>${rows}</tbody></table></div>`
           : `<div class="msg ok" style="margin-top:18px"><strong>File vide.</strong> Toutes les pièces déposées ont été instruites.</div>`}
       </div>
       ${adh}`;
@@ -923,7 +943,7 @@
         <button class="btn btn-2" data-toast="Export CSV généré (démonstration).">Exporter en CSV</button>
       </div>
       <div class="tablewrap"><table>
-        <thead><tr><th>Propriétaire</th><th>Commune</th><th>Logements</th><th>Lits</th><th>Adhésion</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Propriétaire</th><th scope="col">Commune</th><th scope="col">Logements</th><th scope="col">Lits</th><th scope="col">Adhésion</th></tr></thead>
         <tbody>
           <tr>
             <td><span style="font-weight:500;color:var(--ink)">${esc(state.owner.lastName.toUpperCase() + " " + state.owner.firstName)}</span><br><span class="sub">${esc(state.owner.email)}</span></td>
@@ -943,7 +963,7 @@
       <p class="lede">Qui a fait quoi, quand. Absent de TignesPro, et c'est la première chose qui manque le jour d'une contestation.</p>
     </div></div>
     <div class="tablewrap"><table>
-      <thead><tr><th>Horodatage</th><th>Compte</th><th>Action</th><th>Détail</th></tr></thead>
+      <th scope="col"ead><tr><th scope="col">Horodatage</th><th scope="col">Compte</th><th scope="col">Action</th><th scope="col">Détail</th></tr></thead>
       <tbody>${state.journal.map(j => `
         <tr>
           <td class="num" style="color:var(--ink-3);white-space:nowrap">${esc(j.at)}</td>
@@ -1105,13 +1125,13 @@
           : `<span style="color:var(--wait)">API injoignable (${esc(st.reason || "")}) — jeu de démonstration local</span>`}</p>
       <div class="rows">
         ${st.results.map((r, i) => `
-          <div class="row" data-siret-pick="${i}" style="cursor:pointer">
-            <div class="grow">
-              <div class="title">${esc(r.nom_complet || "")}</div>
-              <div class="sub num">${esc((r.siege || {}).siret || "")} · ${esc((r.siege || {}).libelle_commune || "")} · ${esc(r.activite_principale || "")}</div>
-            </div>
+          <button type="button" class="row" data-siret-pick="${i}">
+            <span class="grow">
+              <span class="title" style="display:block">${esc(r.nom_complet || "")}</span>
+              <span class="sub num" style="display:block">${esc((r.siege || {}).siret || "")} · ${esc((r.siege || {}).libelle_commune || "")} · ${esc(r.activite_principale || "")}</span>
+            </span>
             <span class="tag ${COMMUNES_OK[(r.siege || {}).commune] ? "t-ok" : "t-idle"}">${COMMUNES_OK[(r.siege || {}).commune] ? "territoire" : "hors zone"}</span>
-          </div>`).join("")}
+          </button>`).join("")}
       </div>`;
   }
 
@@ -1183,7 +1203,7 @@
         <p class="lede">Constats relevés de l'extérieur sur TignesPro le 4 août 2026, et le traitement prévu pour La Rosière. Aucun test intrusif : ce sont des défenses absentes, pas des failles démontrées.</p>
       </div></div>
       <div class="tablewrap"><table class="cmp">
-        <thead><tr><th>Point</th><th>TignesPro aujourd'hui</th><th>Espace La Rosière</th></tr></thead>
+        <th scope="col"ead><tr><th scope="col">Point</th><th scope="col">TignesPro aujourd'hui</th><th scope="col">Espace La Rosière</th></tr></thead>
         <tbody>${lines.map(l => `<tr><td>${esc(l[0])}</td><td class="was">${esc(l[1])}</td><td class="now">${esc(l[2])}</td></tr>`).join("")}</tbody>
       </table></div>`;
   };
@@ -1216,7 +1236,7 @@
     paintChrome();
     const fn = V[state.view] || V.accueil;
     document.getElementById("main").innerHTML = `<div class="view">${fn()}</div>
-      <footer class="pied">
+      <footer class="pied" role="contentinfo">
         <span>Maquette de proposition — Espace propriétaires de La Rosière</span>
         <span>Charte et couleurs relevées sur larosiere.net · Lexend (licence libre) ; les titres utilisent TT Chocolate dans la charte réelle</span>
       </footer>`;
