@@ -337,6 +337,7 @@
         <button type="button" data-as="ot">Agent de l'office</button>
       </div>
     </div>
+    <button type="button" class="lnk" data-go="siret">Vérification SIRET</button>
     <button type="button" class="lnk" data-go="compare">Ce qui change</button>
   </div>
 </div>
@@ -419,6 +420,7 @@
       }
     ],
     adhesion: { season: "2026-2027", status: "DRAFT", cgu: false, cents: 14500, invoice: null },
+    siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     journal: [
       { at: "04/08 09:12", who: "c.ravanel@example.fr", act: "Connexion", detail: "Réussie, après deux tentatives échouées" },
       { at: "04/08 09:14", who: "c.ravanel@example.fr", act: "Envoi de dossier", detail: "LGT-002 transmis pour instruction" },
@@ -481,7 +483,7 @@
 
   // qui a le droit de voir quoi — la même table que le middleware du vrai produit
   const ACCESS = {
-    accueil: "public", connexion: "public", compare: "public",
+    accueil: "public", connexion: "public", compare: "public", siret: "public",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
     "ot-file": "ot", "ot-proprios": "ot", "ot-journal": "ot"
   };
@@ -920,6 +922,215 @@
         </tr>`).join("")}</tbody>
     </table></div>`;
 
+  // ------------------------------------------------- vérification SIRET
+  const COMMUNES_OK = { "73176": "Montvalezan (La Rosière)", "73257": "Séez" };
+  const NAF_OK = [
+    ["55", "Hébergement"], ["56", "Restauration"], ["47", "Commerce de détail"],
+    ["79", "Agences de voyage et réservation"], ["93", "Sport et loisirs"],
+    ["85.5", "Enseignement sportif et de loisirs"], ["77", "Location"], ["49", "Transport de voyageurs"]
+  ];
+
+  // clé de contrôle : 14 chiffres, algorithme de Luhn
+  function siretLuhn(input) {
+    const s = String(input).replace(/[\s.]/g, "");
+    if (!/^\d{14}$/.test(s)) return false;
+    // La Poste (SIREN 356000000) échappe à Luhn : somme des chiffres multiple de 5
+    if (s.startsWith("356000000")) return [...s].reduce((a, c) => a + +c, 0) % 5 === 0;
+    let total = 0;
+    for (let i = 0; i < 14; i++) {
+      let n = +s[13 - i];
+      if (i % 2 === 1) { n *= 2; if (n > 9) n -= 9; }
+      total += n;
+    }
+    return total % 10 === 0;
+  }
+
+  // jeu de repli : trois établissements réels, relevés le 4 août 2026,
+  // qui déclenchent chacun un verdict différent
+  const SIRET_LOCAL = [
+    { nom_complet: "OFFICE DE TOURISME DE LA ROSIERE", siren: "792553430", activite_principale: "79.90Z",
+      etat_administratif: "A", nature_juridique: "4140",
+      siege: { siret: "79255343000010", adresse: "705 ROUTE DU COL DU PETIT SAINT BERNARD 73700 MONTVALEZAN",
+               code_postal: "73700", libelle_commune: "MONTVALEZAN", commune: "73176" } },
+    { nom_complet: "FAN CLUB DE LA ROSIERE", siren: "431830223", activite_principale: "94.99Z",
+      etat_administratif: "A", nature_juridique: "9220",
+      siege: { siret: "43183022300019", adresse: "MONTVALEZAN", code_postal: "73700",
+               libelle_commune: "MONTVALEZAN", commune: "73176" } },
+    { nom_complet: "OFFICE TOURISME DE ROSIERES ARDECHE SUD", siren: "423034438", activite_principale: "79.90Z",
+      etat_administratif: "A", nature_juridique: "9220",
+      siege: { siret: "42303443800014", adresse: "ROSIERES", code_postal: "07260",
+               libelle_commune: "ROSIERES", commune: "07199" } }
+  ];
+
+  async function siretSearch(q) {
+    const url = "https://recherche-entreprises.api.gouv.fr/search?per_page=5&q=" + encodeURIComponent(q);
+    const ctrl = new AbortController();
+    const kill = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const r = await fetch(url, { signal: ctrl.signal });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const d = await r.json();
+      return { source: "api", results: d.results || [] };
+    } catch (e) {
+      // l'API est injoignable (hors ligne, CSP, maintenance INSEE) : on ne bloque jamais.
+      // SIRENE stocke sans accents, l'utilisateur en tape : on aplatit les deux côtés.
+      const flat = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[\s'-]/g, "");
+      // recherche par mots plutôt que par sous-chaîne : « tourisme rosieres » doit trouver
+      const words = q.split(/\s+/).map(flat).filter(w => w.length > 2);
+      return {
+        source: "local",
+        reason: e.name === "AbortError" ? "délai dépassé" : e.message,
+        results: SIRET_LOCAL.filter(x => {
+          const hay = flat(x.nom_complet);
+          return x.siege.siret.includes(q.replace(/\s/g, "")) ||
+                 (words.length > 0 && words.every(w => hay.includes(w)));
+        })
+      };
+    }
+  }
+
+  // les règles métier : exister ne suffit pas
+  function siretRules(r) {
+    const s = r.siege || {};
+    const naf = (r.activite_principale || "").replace(".", "");
+    const nafMatch = NAF_OK.find(([p]) => naf.startsWith(p.replace(".", "")));
+    const checks = [
+      { ok: r.etat_administratif === "A", label: "Établissement actif",
+        detail: r.etat_administratif === "A" ? "état administratif A" : "fermé au répertoire SIRENE" },
+      { ok: !!COMMUNES_OK[s.commune], label: "Sur le territoire",
+        detail: COMMUNES_OK[s.commune] || `${s.libelle_commune || "commune inconnue"} — hors périmètre` },
+      { ok: !!nafMatch, label: "Activité admise au partenariat",
+        detail: nafMatch ? `${r.activite_principale} · ${nafMatch[1]}` : `${r.activite_principale || "—"} · hors liste` },
+      { ok: r.statut_diffusion !== "P" && r.statut_diffusion !== "N", label: "Diffusion publique",
+        detail: (r.statut_diffusion === "P" || r.statut_diffusion === "N")
+          ? "unité non diffusible — justificatif à demander" : "données ouvertes" }
+    ];
+    let verdict = "VERIFIED";
+    if (!checks[3].ok) verdict = "RESTRICTED";
+    else if (!checks[0].ok) verdict = "CLOSED";
+    else if (!checks[1].ok) verdict = "OUT_OF_AREA";
+    else if (!checks[2].ok) verdict = "REVIEW";
+    return { checks, verdict };
+  }
+
+  const VERDICT = {
+    VERIFIED:   ["t-ok",   "Vérifié",              "Le dossier peut être ouvert automatiquement."],
+    REVIEW:     ["t-wait", "Revue manuelle",       "Activité hors liste : l'office tranche, on ne bloque pas."],
+    OUT_OF_AREA:["t-stop", "Hors territoire",      "L'établissement n'est pas sur une commune du périmètre."],
+    CLOSED:     ["t-stop", "Établissement fermé",  "Refus motivé, avec la date de cessation."],
+    RESTRICTED: ["t-wait", "Diffusion restreinte", "C'est un droit, pas une erreur : on bascule sur un justificatif déposé."]
+  };
+
+  function siretOut() {
+    const st = state.siret;
+    const box = document.getElementById("siret-out");
+    if (!box) return;
+
+    if (st.busy) { box.innerHTML = `<p class="small">Interrogation en cours…</p>`; return; }
+
+    if (st.selected) {
+      const r = st.selected, s = r.siege || {}, { checks, verdict } = siretRules(r);
+      const [tag, title, hint] = VERDICT[verdict];
+      box.innerHTML = `
+        <div class="flexrow" style="justify-content:space-between;margin-bottom:18px">
+          <div>
+            <div style="font-weight:500;font-size:17px;color:var(--ink)">${esc(r.nom_complet)}</div>
+            <div class="sub num">${esc(s.siret || "")}</div>
+          </div>
+          <span class="tag ${tag}" style="font-size:13px;padding:4px 11px">${title}</span>
+        </div>
+        <dl class="spec">
+          <dt>SIREN</dt><dd class="num">${esc(r.siren || "")}</dd>
+          <dt>Adresse</dt><dd style="text-align:right">${esc(s.adresse || "")}</dd>
+          <dt>Commune INSEE</dt><dd class="num">${esc(s.commune || "—")}</dd>
+          <dt>Code NAF</dt><dd class="num">${esc(r.activite_principale || "—")}</dd>
+          <dt>Clé de contrôle</dt><dd>${siretLuhn(s.siret) ? "Luhn valide" : `<span style="color:var(--stop)">Luhn invalide</span>`}</dd>
+        </dl>
+        <div class="rows" style="margin-top:20px">
+          ${checks.map(c => `
+            <div class="row">
+              <span class="tag ${c.ok ? "t-ok" : "t-stop"}" style="min-width:78px;text-align:center">${c.ok ? "Conforme" : "À voir"}</span>
+              <div class="grow"><div class="title">${esc(c.label)}</div><div class="sub">${esc(c.detail)}</div></div>
+            </div>`).join("")}
+        </div>
+        <div class="msg ${verdict === "VERIFIED" ? "ok" : verdict === "REVIEW" || verdict === "RESTRICTED" ? "wait" : "stop"}" style="margin-top:20px">
+          <strong>${title}.</strong> ${esc(hint)}
+        </div>
+        <button class="btn btn-2 btn-s" data-siret-back="1" style="margin-top:18px">← Nouvelle recherche</button>`;
+      return;
+    }
+
+    if (!st.results.length) {
+      box.innerHTML = st.q.length > 2
+        ? `<div class="msg wait"><strong>Aucun établissement trouvé.</strong> Le dossier part en saisie manuelle plutôt qu'en échec.</div>`
+        : `<p class="small">Tapez au moins trois caractères, ou un SIRET à 14 chiffres.</p>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <p class="small" style="margin-bottom:10px">${st.results.length} résultat${st.results.length > 1 ? "s" : ""} ·
+        ${st.source === "api"
+          ? `source : API Recherche d'entreprises, en direct`
+          : `<span style="color:var(--wait)">API injoignable (${esc(st.reason || "")}) — jeu de démonstration local</span>`}</p>
+      <div class="rows">
+        ${st.results.map((r, i) => `
+          <div class="row" data-siret-pick="${i}" style="cursor:pointer">
+            <div class="grow">
+              <div class="title">${esc(r.nom_complet || "")}</div>
+              <div class="sub num">${esc((r.siege || {}).siret || "")} · ${esc((r.siege || {}).libelle_commune || "")} · ${esc(r.activite_principale || "")}</div>
+            </div>
+            <span class="tag ${COMMUNES_OK[(r.siege || {}).commune] ? "t-ok" : "t-idle"}">${COMMUNES_OK[(r.siege || {}).commune] ? "territoire" : "hors zone"}</span>
+          </div>`).join("")}
+      </div>`;
+  }
+
+  V.siret = () => {
+    const st = state.siret;
+    const luhnState = /^\d{14}$/.test(st.q.replace(/\s/g, ""))
+      ? (siretLuhn(st.q) ? `<span class="tag t-ok">clé de contrôle valide</span>` : `<span class="tag t-stop">clé de contrôle invalide</span>`)
+      : "";
+
+    return `
+      <div class="head"><div>
+        <h1>Vérification SIRET</h1>
+        <p class="lede">Prévu pour les socioprofessionnels, en phase 2. Ici en vrai : la saisie appelle l'API Recherche d'entreprises de l'État, et les règles métier s'appliquent sur la réponse.</p>
+      </div></div>
+
+      <div class="cols">
+        <div>
+          <div class="panel stack" style="gap:14px">
+            <div class="stack" style="gap:6px">
+              <label for="siret-q" style="font-size:13.5px;font-weight:500;color:var(--ink)">Nom de la structure, ou SIRET à 14 chiffres</label>
+              <input id="siret-q" type="text" autocomplete="off" spellcheck="false" value="${esc(st.q)}"
+                placeholder="Office de tourisme de La Rosière"
+                style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
+              <div id="siret-luhn">${luhnState}</div>
+            </div>
+            <div class="flexrow" style="gap:8px">
+              <span class="small">Essayez :</span>
+              <button class="btn btn-2 btn-s" data-siret-ex="Office de tourisme de La Rosière">l'office</button>
+              <button class="btn btn-2 btn-s" data-siret-ex="Fan club de la Rosière">une association locale</button>
+              <button class="btn btn-2 btn-s" data-siret-ex="Office tourisme de Rosières Ardèche">un homonyme ardéchois</button>
+            </div>
+          </div>
+          <div id="siret-out" style="margin-top:24px" aria-live="polite"></div>
+        </div>
+
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Les quatre règles</h2></div>
+          <div class="rows">
+            ${[
+              ["Clé de contrôle", "14 chiffres et algorithme de Luhn, côté navigateur. Zéro appel réseau, 90 % des fautes de frappe éliminées. La Poste fait exception et son cas est traité."],
+              ["Établissement actif", "Un SIRET valide peut être celui d'une société radiée en 2019."],
+              ["Sur le territoire", "L'établissement doit être sur Montvalezan (INSEE 73176) ou une commune du périmètre. Un SIRET parfaitement valide à Marseille, on écarte."],
+              ["Activité cohérente", "Le code NAF doit relever de l'hébergement, de la restauration, du commerce, du sport. Hors liste, ça ne bloque pas : ça part en revue."]
+            ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+          </div>
+          <div class="msg" style="margin-top:20px"><strong>L'indisponibilité de l'API ne bloque jamais une inscription.</strong> Coupez votre connexion et réessayez : la recherche bascule sur un jeu local et le dossier partirait en vérification différée.</div>
+        </div>
+      </div>`;
+  };
+
   V.compare = () => {
     const lines = [
       ["Jeton anti-CSRF", "Absent de tous les formulaires", "Natif, plus SameSite=Lax"],
@@ -978,6 +1189,7 @@
         <span>Maquette de proposition — Espace propriétaires de La Rosière</span>
         <span>Charte et couleurs relevées sur larosiere.net · Lexend (licence libre) ; les titres utilisent TT Chocolate dans la charte réelle</span>
       </footer>`;
+    if (state.view === "siret") siretOut();
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
@@ -1018,7 +1230,57 @@
     if (!quiet) toast("Déconnecté. La session est révoquée côté serveur, pas seulement effacée du navigateur.");
   }
 
+  // --- recherche SIRET : on ne repasse pas par draw(), sinon le champ perd le focus
+  let siretTimer = null;
+  async function siretRun(q) {
+    state.siret.q = q;
+    state.siret.selected = null;
+    const term = q.trim();
+    if (term.length < 3) {
+      Object.assign(state.siret, { busy: false, results: [], source: null, reason: null });
+      return siretOut();
+    }
+    state.siret.busy = true;
+    siretOut();
+    const { source, results, reason } = await siretSearch(term);
+    if (state.siret.q !== q) return;               // une frappe plus récente a pris la main
+    Object.assign(state.siret, { busy: false, results, source, reason: reason || null });
+    siretOut();
+  }
+
+  document.addEventListener("input", e => {
+    if (e.target.id !== "siret-q") return;
+    const q = e.target.value;
+    state.siret.q = q;
+    const box = document.getElementById("siret-luhn");
+    if (box) {                                      // indicateur de clé de contrôle, dès 14 chiffres
+      box.innerHTML = /^\d{14}$/.test(q.replace(/[\s.]/g, ""))
+        ? (siretLuhn(q)
+            ? `<span class="tag t-ok">clé de contrôle valide</span>`
+            : `<span class="tag t-stop">clé de contrôle invalide</span>`)
+        : "";
+    }
+    clearTimeout(siretTimer);
+    siretTimer = setTimeout(() => siretRun(q), 350);
+  });
+
   document.addEventListener("click", e => {
+    const s = e.target.closest("[data-siret-ex],[data-siret-pick],[data-siret-back]");
+    if (s) {
+      const d = s.dataset;
+      if (d.siretEx) {
+        const input = document.getElementById("siret-q");
+        if (input) { input.value = d.siretEx; input.focus(); }
+        return siretRun(d.siretEx);
+      }
+      if (d.siretPick) {
+        state.siret.selected = state.siret.results[+d.siretPick];
+        return siretOut();
+      }
+      state.siret.selected = null;
+      return siretOut();
+    }
+
     const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-rev],[data-send],[data-up],[data-reg],[data-cgu],[data-adh]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
