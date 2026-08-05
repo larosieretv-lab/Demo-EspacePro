@@ -9,16 +9,33 @@ soit avant l'ouverture de la saison d'hiver. C'est la fenêtre à tenir.
 
 ---
 
+## 0. Décisions arrêtées — 5 août 2026
+
+Quatre points tranchés, qui figent le périmètre v1 :
+
+| Décision | Conséquence |
+|---|---|
+| **Aucun encaissement en v1** | Pas de Stripe, pas de facture émise par l'application, pas de rapprochement bancaire. L'ancien §7 sort du périmètre |
+| **L'adhésion reste payante** | Le parcours va jusqu'à la validation par l'office ; l'appel de cotisation se fait hors application. Le modèle prévoit la place du paiement, sans l'implémenter |
+| **Un logement peut avoir deux propriétaires** | Copropriété native dans le modèle de données dès la v1, avec invitation par e-mail. C'est structurant, pas cosmétique — voir §3 |
+| **Les faiblesses de sécurité sont un livrable** | Les 13 constats de l'audit deviennent des critères de recette opposables, pas une intention — voir §8 |
+
+**Le troc est neutre sur le calendrier** : la semaine libérée par l'encaissement finance la
+copropriété et le durcissement sécurité. Les 8 semaines tiennent.
+
+---
+
 ## 1. Hypothèses (à confirmer avant S1)
 
 | # | Hypothèse | Si faux |
 |---|---|---|
 | H1 | 1 développeur à temps plein | à 2-3 j/semaine → 4 mois |
 | H2 | Un interlocuteur OT disponible, recette sous 48 h | +2 à 3 semaines |
-| H3 | Le paiement en ligne de l'adhésion est **optionnel** (module §7) | +1 semaine si barème complexe |
+| H3 | ~~Paiement en ligne optionnel~~ → **tranché : hors périmètre v1** | — |
 | H4 | Les propriétaires existants sont dans un fichier exploitable (Excel/CSV/export) | reprise à rechiffrer |
-| H5 | CGU, barème et mentions légales fournis par le client en S1 | facturation décalée en phase 2 |
+| H5 | CGU et mentions légales fournies par le client en S1 | mise en ligne décalée |
 | H6 | Pas d'interconnexion avec un PMS/channel manager en v1 | à chiffrer séparément |
+| H7 | Deux propriétaires maximum par logement, sans quote-part à gérer | au-delà, arbitrages à revoir |
 
 ---
 
@@ -84,13 +101,27 @@ model Organization {
   country       String   @default("FR")
   createdAt     DateTime @default(now())
   memberships   Membership[]
-  properties    Property[]
+  properties    PropertyOwner[]
   adhesions     Adhesion[]
+}
+
+// Un logement n'appartient plus à une organisation, mais à une ou deux.
+// C'est le changement structurant de la décision du 5 août.
+model PropertyOwner {
+  propertyId     String
+  organizationId String
+  role           OwnerRole    // PRIMARY | CO_OWNER
+  invitedAt      DateTime?    // copropriétaire invité par e-mail
+  acceptedAt     DateTime?    // tant que null, il ne voit rien
+  property       Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  @@id([propertyId, organizationId])
+  @@index([organizationId])
 }
 
 model Property {
   id                 String        @id @default(cuid())
-  organizationId     String
+  owners             PropertyOwner[]
   name               String
   addressLine        String
   postalCode         String
@@ -100,8 +131,7 @@ model Property {
   capacity           Int
   surfaceM2          Int?
   status             PropertyStatus // DRAFT | SUBMITTED | VALIDATED | REJECTED
-  reviewNote         String?        // motif de rejet, visible du propriétaire
-  organization       Organization  @relation(fields: [organizationId], references: [id])
+  reviewNote         String?        // motif de rejet, visible des propriétaires
   documents          Document[]
 }
 // `Session` est fourni par la lib d'auth (Better Auth / Auth.js) — non détaillé ici.
@@ -124,13 +154,15 @@ model Adhesion {
   id             String        @id @default(cuid())
   organizationId String
   season         String        // "2026-2027"
-  status         AdhesionStatus // DRAFT | SUBMITTED | VALIDATED | PAID | REJECTED
+  status         AdhesionStatus // DRAFT | SUBMITTED | VALIDATED | REJECTED
   cguVersion     String
   cguAcceptedAt  DateTime?
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  // Encaissement hors périmètre v1. Les colonnes ci-dessous sont prévues mais
+  // ni alimentées ni exposées : elles évitent une migration douloureuse en phase 2.
   amountCents    Int?
   invoiceRef     String?
   paidAt         DateTime?
-  organization   Organization  @relation(fields: [organizationId], references: [id])
   @@unique([organizationId, season])
 }
 
@@ -149,7 +181,31 @@ model AuditLog {
 
 Règle d'autorisation unique : **toute requête est filtrée par les `organizationId` accessibles
 via `Membership`**. Un helper `getScopedOrgIds(session)` est le seul point d'entrée — jamais de
-requête Prisma sans ce filtre dans le code propriétaire.
+requête Prisma sans ce filtre dans le code propriétaire. Pour les logements, le filtre passe
+par `PropertyOwner` avec `acceptedAt != null` : une invitation non acceptée ne donne accès à rien.
+
+### 3.1 Copropriété — les règles à trancher, et celles que je propose
+
+Deux propriétaires sur un logement, ce n'est pas une ligne de plus dans une table. Ça ouvre
+une série de questions dont aucune n'a de réponse évidente. Voici mes recommandations, à valider
+par l'office :
+
+| Question | Proposition | Pourquoi |
+|---|---|---|
+| Qui peut modifier le logement ? | **Les deux** | Le cas courant est un couple. Bloquer l'un des deux, c'est un appel au secrétariat par semaine |
+| Qui peut envoyer le dossier ? | **Les deux** | Idem. L'action est tracée au nom de celui qui l'a faite |
+| Qui reçoit les notifications ? | **Les deux, systématiquement** | Sinon l'un valide, l'autre l'apprend en janvier |
+| Qui peut inviter un copropriétaire ? | Le `PRIMARY` uniquement | Sinon on peut se faire rattacher n'importe qui |
+| Qui peut retirer un copropriétaire ? | Le `PRIMARY`, avec trace au journal | Cas de séparation, de vente |
+| Que voit un invité qui n'a pas accepté ? | **Rien** | `acceptedAt` null = aucun accès |
+| Et si le `PRIMARY` supprime son compte ? | Le `CO_OWNER` est promu `PRIMARY` | Sinon le logement devient orphelin |
+
+**Le parcours d'invitation** est le vrai travail ajouté : le propriétaire saisit l'e-mail du
+second, celui-ci reçoit un lien à usage unique valable 30 jours, crée son compte ou se connecte,
+et est rattaché. S'il n'accepte jamais, le logement reste au premier — rien ne se bloque.
+
+Ce que je n'implémente pas en v1, faute de besoin exprimé : les quote-parts, les mandats de
+gestion, et plus de deux propriétaires. Le modèle les accueille, l'interface ne les expose pas.
 
 ---
 
@@ -168,7 +224,9 @@ requête Prisma sans ce filtre dans le code propriétaire.
 - `/espace/logements` — liste + statut de chaque bien
 - `/espace/logements/nouveau` et `/espace/logements/[id]` — formulaire complet
 - `/espace/logements/[id]/documents` — dépôt, statut, motif de rejet
-- `/espace/adhesion` — CGU de la saison, envoi du dossier, suivi
+- `/espace/logements/[id]/proprietaires` — copropriétaire : inviter, retirer, voir le statut
+- `/invitation/[token]` — page d'acceptation d'une invitation de copropriété
+- `/espace/adhesion` — CGU de la saison, envoi du dossier, suivi (sans paiement en v1)
 
 ### Back-office OT (`/admin`, rôles `OT_STAFF` / `OT_ADMIN`)
 - `/admin` — file d'attente des dossiers à traiter
@@ -218,11 +276,13 @@ requête Prisma sans ce filtre dans le code propriétaire.
 - Validation document par document côté OT, dates d'expiration (assurance, diagnostic)
 - Aucune URL publique : accès par URL signée courte durée, vérifiée contre le `Membership`
 
-### S6 — Back-office OT
+### S6 — Back-office OT et copropriété
 - File d'attente, recherche, filtres, fiche propriétaire consolidée
-- Validation / rejet motivé, notification automatique au propriétaire
+- Validation / rejet motivé, notification automatique **aux deux** propriétaires
 - Exports CSV
-- Adhésion : CGU versionnées, acceptation horodatée, suivi par saison
+- Adhésion : CGU versionnées, acceptation horodatée, suivi par saison — **sans encaissement**
+- **Copropriété** : invitation par e-mail, acceptation, retrait, promotion du `CO_OWNER`,
+  règles du §3.1 et leurs tests (semaine financée par l'abandon du module de paiement)
 
 ### S7 — Finitions
 - E-mails transactionnels (10 gabarits) FR/EN, SPF/DKIM/DMARC configurés
@@ -252,31 +312,55 @@ Un cas de test par route.
 
 ---
 
-## 7. Module optionnel — Paiement de l'adhésion (+1 semaine)
+## 7. Encaissement — reporté en phase 2 *(décision du 5 août)*
 
-Stripe Checkout, webhook de confirmation, facture PDF, relances automatiques.
-À déclencher seulement si le barème est fourni et simple (montant fixe ou par tranche).
-Barème par nombre de lits avec prorata et avoirs → phase 2.
+L'adhésion reste payante, mais l'application ne l'encaisse pas en v1. Le parcours s'arrête à
+la validation par l'office, qui appelle la cotisation par ses moyens habituels.
+
+Ce qui reste malgré tout fait en v1, parce que ça ne coûte presque rien et que ça évite une
+reprise douloureuse :
+
+- les colonnes `amountCents`, `invoiceRef`, `paidAt` existent en base, non alimentées ;
+- le statut `VALIDATED` de l'adhésion est le point d'accroche naturel du futur paiement ;
+- l'écran d'adhésion affiche « cotisation appelée par l'office », pas un bouton mort.
+
+Ce qui est explicitement exclu : Stripe, facture PDF, numérotation séquentielle, TVA,
+relances automatiques, rapprochement bancaire. **Chiffrage phase 2 : 3 à 4 semaines**
+selon la complexité du barème — c'est la numérotation légale et les avoirs qui coûtent,
+pas le paiement lui-même.
 
 ---
 
-## 8. Checklist sécurité (réponse point par point à l'audit TignesPro)
+## 8. Sécurité — livrable à part entière *(décision du 5 août)*
 
-| Constat TignesPro | Traitement v1 |
-|---|---|
-| Aucun CSRF | Server Actions Next.js + `SameSite=Lax` |
-| Aucun rate-limiting / CAPTCHA | Rate-limiting par IP et par compte + Turnstile |
-| Cookies d'identité maison | Sessions serveur signées, rotation, révocation |
-| Pas de CSP | CSP stricte avec nonce |
-| HTML injecté via `.load()` | React, échappement par défaut, pas de `dangerouslySetInnerHTML` |
-| HTTP répond 200 | Redirection 301 + HSTS preload |
-| CDN sans SRI | Zéro CDN, tout bundlé |
-| Pas de 2FA | TOTP obligatoire pour les comptes OT |
-| Dépendances de 2016 | Lockfile + Dependabot + CI qui casse sur vulnérabilité haute |
-| Coller bloqué sur le mot de passe | Autorisé, gestionnaires de mots de passe encouragés |
-| GA4 avant consentement | Aucun tracker avant consentement explicite |
-| Contrôle d'accès tardif | Middleware + filtre `organizationId` systématique |
-| Validation client seule | Zod partagé, revalidation serveur obligatoire |
+Ce tableau n'est pas une liste d'intentions : **c'est le référentiel de recette**. Chaque ligne
+est vérifiable par le client ou par un tiers, et conditionne la réception du lot.
+
+| Constat TignesPro | Traitement v1 | Comment le vérifier |
+|---|---|---|
+| Aucun CSRF | Server Actions Next.js + `SameSite=Lax` | Rejouer un POST depuis un autre domaine : doit échouer |
+| Aucun rate-limiting / CAPTCHA | 5 essais / 15 min par IP **et** par compte, + Turnstile | 6 connexions ratées d'affilée : la 6ᵉ est refusée |
+| Cookies d'identité maison | Session serveur, jeton haché en base, rotation, révocation | « Se déconnecter » puis rejouer le cookie : refusé |
+| Pas de CSP | CSP stricte avec nonce | En-têtes de réponse, ou observatory.mozilla.org |
+| HTML injecté via `.load()` | React, échappement par défaut, aucun `dangerouslySetInnerHTML` | Nom de logement `<script>alert(1)</script>` : affiché tel quel |
+| HTTP répond 200 | Redirection 301 + HSTS preload | `curl -I http://…` doit renvoyer 301 |
+| CDN sans SRI | Zéro CDN, tout bundlé | Onglet réseau : aucun domaine tiers |
+| Pas de 2FA | TOTP obligatoire pour les comptes OT | Créer un compte agent : 2FA imposée à la première connexion |
+| Dépendances de 2016 | Lockfile + Dependabot + CI qui casse sur vulnérabilité haute | Journal de la CI |
+| Coller bloqué sur le mot de passe | Autorisé | Coller dans le champ : ça fonctionne |
+| GA4 avant consentement | Aucun traceur avant accord explicite | Onglet réseau avant de cliquer sur le bandeau : aucune requête |
+| Contrôle d'accès tardif (200 vide) | Middleware + filtre par organisation ; 401 et 403 distingués | Propriétaire A appelant l'URL d'un bien de B : 403, pas une page vide |
+| Validation client seule | Zod partagé, revalidation serveur obligatoire | POST direct hors formulaire avec données invalides : rejeté |
+
+### 8.1 Ce qui va au-delà de l'audit
+
+Trois points qui ne corrigent pas TignesPro mais qui relèvent du même niveau d'exigence :
+
+- **Cloisonnement entre propriétaires** — un test automatisé par route, en CI : le propriétaire A
+  ne doit jamais lire une donnée de B. C'est le test qui ne doit jamais devenir rouge.
+- **Journal d'audit** — connexion, échec de connexion, accès refusé, dépôt, validation, refus,
+  invitation, retrait de copropriétaire. Conservé après suppression de compte, anonymisé.
+- **Revue OWASP ASVS niveau 2** sur les points ci-dessus avant la mise en ligne.
 
 ---
 
@@ -296,9 +380,16 @@ Barème par nombre de lits avec prorata et avoirs → phase 2.
 
 ## 10. Hors périmètre v1 (phase 2 à chiffrer)
 
-Espace socio-professionnel (vérification SIRET, multi-établissements, adhésion facturée),
-espace salariés, interconnexion PMS/channel manager, calcul et déclaration de la taxe de séjour,
-statistiques d'occupation, application mobile.
+**Encaissement de l'adhésion** (§7, 3 à 4 semaines), espace socio-professionnel (vérification
+SIRET réelle, multi-établissements, adhésion facturée), espace salariés, interconnexion
+PMS/channel manager, calcul et déclaration de la taxe de séjour, statistiques d'occupation,
+application mobile.
+
+Et, à ne pas laisser entrer par la porte de derrière : **la centrale de réservation**. Rien de
+tel n'existe chez TignesPro — leurs CGU précisent qu'ils ne sont pas partie aux contrats conclus
+entre membres et professionnels, et aucun flux de séjour ne transite par leur plateforme. Si
+La Rosière en veut une, c'est un autre métier : disponibilités, mandats, encaissement pour compte
+de tiers, reversements. À chiffrer séparément, jamais à glisser dans ce périmètre.
 
 ---
 

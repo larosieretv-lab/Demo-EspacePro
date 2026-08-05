@@ -373,7 +373,6 @@
 (function () {
   "use strict";
 
-  const euros = c => (c / 100).toFixed(2).replace(".", ",") + " €";
   const esc = s => String(s).replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 
   const state = {
@@ -390,6 +389,8 @@
     lgts: [
       {
         id: "LGT-001", name: "Chalet Les Mélèzes", sector: "La Rosière 1850",
+        owners: [{ who: "Claire Ravanel", role: "PRIMARY", accepted: true },
+                 { who: "Julien Ravanel", role: "CO_OWNER", accepted: true }],
         street: "112 route du Petit-Saint-Bernard", beds: 8, area: 96, stars: 4,
         reg: "73153 000 123 4Z", status: "VALIDATED",
         docs: [
@@ -400,6 +401,7 @@
       },
       {
         id: "LGT-002", name: "Appartement Les Eucherts", sector: "Les Eucherts",
+        owners: [{ who: "Claire Ravanel", role: "PRIMARY", accepted: true }],
         street: "8 allée des Eucherts", beds: 4, area: 42, stars: 3,
         reg: "73153 000 456 7B", status: "SUBMITTED",
         docs: [
@@ -410,6 +412,8 @@
       },
       {
         id: "LGT-003", name: "Studio Le Belvédère", sector: "Les Eucherts",
+        owners: [{ who: "Claire Ravanel", role: "PRIMARY", accepted: true },
+                 { who: "m.ravanel@example.fr", role: "CO_OWNER", accepted: false }],
         street: "24 rue du Belvédère", beds: 2, area: 24, stars: 0,
         reg: "", status: "DRAFT",
         docs: [
@@ -419,7 +423,7 @@
         ]
       }
     ],
-    adhesion: { season: "2026-2027", status: "DRAFT", cgu: false, cents: 14500, invoice: null },
+    adhesion: { season: "2026-2027", status: "DRAFT", cgu: false },
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     journal: [
       { at: "04/08 09:12", who: "c.ravanel@example.fr", act: "Connexion", detail: "Réussie, après deux tentatives échouées" },
@@ -459,7 +463,6 @@
       if (no) out.push({ txt: `${l.name} — ${no} pièce refusée, à remplacer`, go: "logement", id: l.id, hard: true });
     });
     if (!state.adhesion.cgu) out.push({ txt: `Conditions générales ${state.adhesion.season} à accepter`, go: "adhesion", hard: false });
-    else if (state.adhesion.status === "VALIDATED") out.push({ txt: `Cotisation ${state.adhesion.season} à régler — ${euros(state.adhesion.cents)}`, go: "adhesion", hard: true });
     return out;
   }
 
@@ -618,7 +621,7 @@
   V.tdb = () => {
     const list = chores();
     const okCount = state.lgts.filter(l => l.status === "VALIDATED").length;
-    const adhWord = { DRAFT: "À préparer", SUBMITTED: "Envoyée", VALIDATED: "À régler", PAID: "Réglée" }[state.adhesion.status];
+    const adhWord = { DRAFT: "À préparer", SUBMITTED: "Envoyée", VALIDATED: "Validée" }[state.adhesion.status];
 
     const chorehtml = list.length
       ? `<div class="rows">${list.map(c => `
@@ -658,7 +661,7 @@
       <div class="row">
         <div class="grow">
           <div class="title">${esc(l.name)}</div>
-          <div class="sub">${esc(l.sector)} · ${l.beds} lits · ${l.area} m² · ${l.stars ? l.stars + " étoiles" : "non classé"}</div>
+          <div class="sub">${esc(l.sector)} · ${l.beds} lits · ${l.area} m² · ${l.stars ? l.stars + " étoiles" : "non classé"}${coOwnerNote(l)}</div>
         </div>
         <div style="width:96px">
           <div class="bar-meter${f === 100 ? " done" : ""}"><i style="width:${f}%"></i></div>
@@ -666,6 +669,36 @@
         </div>
         <span class="tag ${LGT_TAG[l.status]}">${LGT_TXT[l.status]}</span>
         <button class="btn btn-2 btn-s" data-go="logement" data-id="${l.id}">Ouvrir</button>
+      </div>`;
+  }
+
+
+  // --- copropriété
+  function coOwnerNote(l) {
+    const o = l.owners || [];
+    if (o.length < 2) return "";
+    const pending = o.some(x => !x.accepted);
+    return pending ? " · invitation en attente" : " · 2 propriétaires";
+  }
+
+  function ownersBlock(l) {
+    const o = l.owners || [];
+    return `
+      <div class="section">
+        <div class="bar"><h2>Propriétaires</h2><span class="count">${o.length}</span></div>
+        <div class="rows">
+          ${o.map(x => `
+            <div class="row">
+              <div class="grow">
+                <div class="title">${esc(x.who)}</div>
+                <div class="sub">${x.role === "PRIMARY" ? "déclarant principal" : "copropriétaire"}</div>
+              </div>
+              <span class="tag ${x.accepted ? "t-ok" : "t-wait"}">${x.accepted ? "Accès actif" : "Invitation envoyée"}</span>
+            </div>`).join("")}
+        </div>
+        ${o.length < 2
+          ? `<button class="btn btn-2 btn-s" data-toast="Dans le produit final : saisie de l'e-mail, lien d'invitation valable 30 jours." style="margin-top:16px">Inviter un copropriétaire</button>`
+          : `<p class="small" style="margin-top:16px">Les deux propriétaires modifient le dossier et l'envoient à l'office. Chaque action est tracée au nom de celui qui l'a faite, et notifie l'autre. Tant qu'une invitation n'est pas acceptée, l'invité ne voit rien.</p>`}
       </div>`;
   }
 
@@ -732,6 +765,8 @@
         </div>
       </div>
 
+      ${ownersBlock(l)}
+
       <div class="section">
         <div class="bar"><h2>Pièces justificatives</h2><span class="count">${l.docs.length}</span></div>
         <div class="tablewrap"><table><thead><tr><th>Pièce</th><th>Fichier</th><th>Statut</th><th></th></tr></thead><tbody>${docRows}</tbody></table></div>
@@ -762,24 +797,20 @@
       body = `
         <div class="msg"><strong>Dossier transmis.</strong> L'office l'instruit. Vous recevrez un e-mail à chaque étape.</div>
         <p class="small" style="margin-top:16px">Pour la démonstration : ouvrez la session d'un agent de l'office depuis le bandeau jaune, instruisez le dossier, puis revenez ici.</p>`;
-    } else if (a.status === "VALIDATED") {
-      body = `
-        <div class="msg ok"><strong>Adhésion validée.</strong> Facture <span class="num">${esc(a.invoice)}</span> émise le 04/08/2026.</div>
-        <dl class="spec" style="margin:20px 0">
-          <dt>Saison</dt><dd class="num">${a.season}</dd>
-          <dt>Montant</dt><dd class="num">${euros(a.cents)}</dd>
-          <dt>Échéance</dt><dd class="num">30/09/2026</dd>
-        </dl>
-        <button class="btn btn-1" data-adh="pay">Régler ${euros(a.cents)}</button>
-        <p class="small" style="margin-top:14px">Module optionnel, une semaine de développement. Aucune donnée bancaire ne transite par l'application : Stripe encaisse, nous ne gardons qu'une référence.</p>`;
     } else {
       body = `
-        <div class="msg ok"><strong>Cotisation réglée</strong> le 04/08/2026. Facture <span class="num">${esc(a.invoice)}</span> acquittée.</div>
-        <button class="btn btn-2" data-toast="Dans le produit final : téléchargement de la facture acquittée en PDF." style="margin-top:18px">Télécharger la facture</button>`;
+        <div class="msg ok"><strong>Adhésion validée</strong> pour la saison ${a.season}. Votre dossier est complet.</div>
+        <dl class="spec" style="margin:20px 0">
+          <dt>Saison</dt><dd class="num">${a.season}</dd>
+          <dt>Logements couverts</dt><dd class="num">${state.lgts.length}</dd>
+          <dt>Cotisation</dt><dd>appelée par l'office</dd>
+        </dl>
+        <p class="small">L'adhésion est payante, mais l'encaissement ne passe pas par cet outil en version 1 :
+        l'office appelle la cotisation par ses moyens habituels. Le paiement en ligne est chiffré en phase 2.</p>`;
     }
 
-    const order = ["DRAFT", "SUBMITTED", "VALIDATED", "PAID"];
-    const names = { DRAFT: "Préparation", SUBMITTED: "Instruction", VALIDATED: "Facturation", PAID: "Réglée" };
+    const order = ["DRAFT", "SUBMITTED", "VALIDATED"];
+    const names = { DRAFT: "Préparation", SUBMITTED: "Instruction", VALIDATED: "Validée" };
     const at = order.indexOf(a.status);
     const steps = `<div class="steps">${order.map((s, i) => `
       <div class="s${i <= at ? " on" : ""}"><span class="dot"></span><span class="lab">${names[s]}</span></div>
@@ -798,7 +829,7 @@
           <div class="rows">
             ${[
               ["Tarif propriétaire", "Sur le forfait Espace San Bernardo, La Rosière et La Thuile."],
-              ["Mise en relation", "Vos disponibilités remontent à la centrale de réservation."],
+              ["Visibilité", "Votre logement apparaît sur les supports de communication de l'office."],
               ["Accompagnement", "Classement meublé, déclaration en mairie, taxe de séjour."]
             ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
           </div>
@@ -860,7 +891,7 @@
               <div style="font-weight:500;color:var(--ink)">${esc(state.owner.firstName + " " + state.owner.lastName)}</div>
               <div class="sub">${state.lgts.length} logements · ${beds()} lits · conditions générales acceptées</div>
             </div>
-            <button class="btn btn-1" data-adh="validate">Valider et facturer ${euros(state.adhesion.cents)}</button>
+            <button class="btn btn-1" data-adh="validate">Valider l'adhésion</button>
           </div>
         </div>
       </div>` : "";
@@ -881,8 +912,8 @@
   };
 
   V["ot-proprios"] = () => {
-    const w = { DRAFT: "t-idle", SUBMITTED: "t-wait", VALIDATED: "t-wait", PAID: "t-ok" }[state.adhesion.status];
-    const wtxt = { DRAFT: "À préparer", SUBMITTED: "Envoyée", VALIDATED: "À régler", PAID: "Réglée" }[state.adhesion.status];
+    const w = { DRAFT: "t-idle", SUBMITTED: "t-wait", VALIDATED: "t-ok" }[state.adhesion.status];
+    const wtxt = { DRAFT: "À préparer", SUBMITTED: "Envoyée", VALIDATED: "Validée" }[state.adhesion.status];
     return `
       <div class="head">
         <div>
@@ -1354,15 +1385,8 @@
     }
     if (d.adh === "validate") {
       state.adhesion.status = "VALIDATED";
-      state.adhesion.invoice = "F2026-0417";
-      note("Adhésion validée", "facture F2026-0417 émise");
-      toast("Adhésion validée, facture émise.");
-      return draw();
-    }
-    if (d.adh === "pay") {
-      state.adhesion.status = "PAID";
-      note("Cotisation réglée", `facture ${state.adhesion.invoice} acquittée`);
-      toast("Paiement simulé. En production : Stripe Checkout.");
+      note("Adhésion validée", `saison ${state.adhesion.season}`);
+      toast("Adhésion validée. L'office appellera la cotisation.");
       return draw();
     }
   });
