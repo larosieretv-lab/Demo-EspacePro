@@ -444,6 +444,7 @@
       }
     ],
     adhesion: { season: "2026-2027", status: "DRAFT", cgu: false },
+    pending: null,
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     journal: [
       { at: "04/08 09:12", who: "c.ravanel@example.fr", act: "Connexion", detail: "Réussie, après deux tentatives échouées" },
@@ -489,6 +490,7 @@
   const TABS = {
     none: [
       { id: "accueil", label: "Accueil" },
+      { id: "inscription", label: "Créer un compte" },
       { id: "connexion", label: "Connexion" }
     ],
     owner: [
@@ -507,6 +509,8 @@
   // qui a le droit de voir quoi — la même table que le middleware du vrai produit
   const ACCESS = {
     accueil: "public", connexion: "public", compare: "public", siret: "public",
+    inscription: "public", verif: "public", invitation: "public",
+    "logement-nouveau": "owner",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
     "ot-file": "ot", "ot-proprios": "ot", "ot-journal": "ot"
   };
@@ -638,6 +642,201 @@
       </div>
     </div>`;
 
+
+  // ---------------------------------------------------- création de compte
+  function pwdScore(v) {
+    let s = 0;
+    if (v.length >= 12) s++;
+    if (v.length >= 16) s++;
+    if (/[a-z]/.test(v) && /[A-Z]/.test(v)) s++;
+    if (/\d/.test(v)) s++;
+    if (/[^\w\s]/.test(v)) s++;
+    return Math.min(s, 4);
+  }
+  const PWD_TXT = ["Trop court", "Faible", "Correct", "Bon", "Solide"];
+  const PWD_COL = ["--stop", "--stop", "--wait", "--ok", "--ok"];
+
+  function pwdMeter(v) {
+    if (!v) return "";
+    const s = pwdScore(v);
+    return `<div class="flexrow" style="gap:10px">
+      <div class="bar-meter" style="flex:1"><i style="width:${(s + 1) * 20}%;background:var(${PWD_COL[s]})"></i></div>
+      <span class="small" style="color:var(${PWD_COL[s]})">${PWD_TXT[s]}</span>
+    </div>`;
+  }
+
+  const champ = (id, label, opts = {}) => `
+    <div class="stack" style="gap:6px${opts.flex ? ";flex:" + opts.flex : ""}">
+      <label for="${id}" style="font-size:13.5px;font-weight:500;color:var(--ink)">${label}${opts.req === false ? ' <span class="small">(facultatif)</span>' : ""}</label>
+      <input id="${id}" type="${opts.type || "text"}" ${opts.req === false ? "" : "required"}
+        ${opts.autocomplete ? `autocomplete="${opts.autocomplete}"` : 'autocomplete="off"'}
+        ${opts.placeholder ? `placeholder="${opts.placeholder}"` : ""} ${opts.value ? `value="${opts.value}"` : ""}
+        style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
+      ${opts.hint ? `<span class="small">${opts.hint}</span>` : ""}
+    </div>`;
+
+  V.inscription = () => `
+    <div class="head"><div>
+      <h1>Créer mon compte</h1>
+      <p class="lede">Un formulaire, pas un tunnel. Les informations de vos logements viendront après — d'abord, on vous identifie.</p>
+    </div></div>
+
+    <div class="cols">
+      <form class="panel stack" style="gap:16px" id="form-signup">
+        <fieldset class="stack" style="border:0;padding:0;margin:0;gap:8px">
+          <legend style="font-size:13.5px;font-weight:500;color:var(--ink);padding:0 0 8px">Vous êtes</legend>
+          <div class="flexrow" style="gap:18px">
+            <label class="flexrow" style="gap:7px;font-size:14.5px"><input type="radio" name="kind" value="particulier" checked> Un particulier</label>
+            <label class="flexrow" style="gap:7px;font-size:14.5px"><input type="radio" name="kind" value="societe"> Une société ou une SCI</label>
+          </div>
+        </fieldset>
+
+        <div id="bloc-societe" hidden class="stack" style="gap:16px">
+          ${champ("s-raison", "Raison sociale", { req: false, autocomplete: "organization" })}
+          ${champ("s-siret", "SIRET", { req: false, placeholder: "14 chiffres", hint: "Contrôlé au format et par l'annuaire des entreprises. Facultatif : il sert à éditer vos justificatifs, pas à vous filtrer." })}
+          <div id="s-siret-etat"></div>
+        </div>
+
+        <div class="flexrow" style="gap:14px;align-items:flex-start">
+          ${champ("s-prenom", "Prénom", { autocomplete: "given-name", flex: "1" })}
+          ${champ("s-nom", "Nom", { autocomplete: "family-name", flex: "1" })}
+        </div>
+        ${champ("s-mail", "Adresse e-mail", { type: "email", autocomplete: "email" })}
+        ${champ("s-tel", "Téléphone", { type: "tel", autocomplete: "tel" })}
+        <div class="flexrow" style="gap:14px;align-items:flex-start">
+          ${champ("s-cp", "Code postal", { autocomplete: "postal-code", flex: "0 0 130px" })}
+          ${champ("s-ville", "Commune de résidence", { autocomplete: "address-level2", flex: "1" })}
+        </div>
+        ${champ("s-pwd", "Mot de passe", { type: "password", autocomplete: "new-password", hint: "Douze caractères minimum. Le collage est autorisé : servez-vous de votre gestionnaire de mots de passe." })}
+        <div id="s-pwd-meter"></div>
+
+        <label class="flexrow" style="gap:9px;font-size:14px;align-items:flex-start">
+          <input type="checkbox" id="s-cgu" required style="margin-top:4px">
+          <span>J'accepte les conditions générales d'utilisation et la politique de confidentialité.</span>
+        </label>
+
+        <button type="submit" class="btn btn-1" style="align-self:flex-start">Créer mon compte</button>
+        <p class="small">Maquette : rien n'est transmis, aucun compte n'est créé.</p>
+      </form>
+
+      <div>
+        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que TignesPro fait autrement</h2></div>
+        <div class="rows">
+          ${[
+            ["Le collage est autorisé", "Leur formulaire bloque copier, coller, glisser et même la sélection sur le champ mot de passe. Résultat : des mots de passe plus courts, tapés à la main, souvent réutilisés."],
+            ["Pas de limite à cinquante caractères", "La leur empêche les phrases de passe. Une empreinte Argon2id encaisse n'importe quelle longueur."],
+            ["Une seule inscription", "Chez eux, trois formulaires séparés selon le profil, et trois pages de mot de passe oublié."],
+            ["Vérification de l'adresse", "Le compte n'est actif qu'après avoir cliqué sur le lien reçu."]
+          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  V.verif = () => `
+    <div class="head"><div>
+      <h1>Vérifiez votre boîte mail</h1>
+      <p class="lede">Un lien vient d'être envoyé à <strong>${esc(state.pending || "")}</strong>. Il est valable une heure et ne sert qu'une fois. Tant qu'il n'est pas ouvert, le compte existe mais ne donne accès à rien.</p>
+    </div></div>
+    <div class="cols">
+      <div class="panel stack" style="gap:16px">
+        <div class="msg"><strong>Pourquoi cette étape.</strong> Sans elle, n'importe qui crée un compte avec l'adresse de quelqu'un d'autre, et l'office se retrouve avec des dossiers fantômes à démêler en octobre.</div>
+        <button class="btn btn-1" data-verify="1" style="align-self:flex-start">Ouvrir le lien reçu</button>
+        <button class="btn btn-2 btn-s" data-toast="Nouveau lien envoyé. Le précédent est invalidé." style="align-self:flex-start">Renvoyer le lien</button>
+      </div>
+      <div>
+        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Le jeton</h2></div>
+        <div class="rows">
+          ${[
+            ["Haché en base", "Ce n'est pas le lien qui est stocké, mais son empreinte. Une fuite de la base ne donne aucun lien utilisable."],
+            ["À usage unique", "Consommé à la première ouverture."],
+            ["Une heure de validité", "Au-delà, il faut en redemander un."]
+          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  // ------------------------------------------------- déclarer un logement
+  V["logement-nouveau"] = () => `
+    <div class="head"><div>
+      <button class="btn btn-2 btn-s" data-go="logements" style="margin-bottom:14px">← Tous mes logements</button>
+      <h1>Déclarer un logement</h1>
+      <p class="lede">Le strict nécessaire pour ouvrir le dossier. Les justificatifs se déposent ensuite, à votre rythme — rien ne part à l'office tant que le dossier n'est pas complet.</p>
+    </div></div>
+
+    <div class="cols">
+      <form class="panel stack" style="gap:16px" id="form-lgt">
+        ${champ("n-nom", "Nom du logement", { placeholder: "Chalet Les Mélèzes" })}
+        <div class="stack" style="gap:6px">
+          <label for="n-secteur" style="font-size:13.5px;font-weight:500;color:var(--ink)">Secteur</label>
+          <select id="n-secteur" style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
+            <option>La Rosière 1850</option><option>Les Eucherts</option><option>Le Petit-Saint-Bernard</option>
+          </select>
+        </div>
+        ${champ("n-adresse", "Adresse", { autocomplete: "street-address" })}
+        <div class="flexrow" style="gap:14px;align-items:flex-start">
+          ${champ("n-lits", "Capacité (lits)", { type: "number", flex: "1" })}
+          ${champ("n-surface", "Surface (m²)", { type: "number", flex: "1" })}
+        </div>
+        <div class="stack" style="gap:6px">
+          <label for="n-classement" style="font-size:13.5px;font-weight:500;color:var(--ink)">Classement meublé de tourisme</label>
+          <select id="n-classement" style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
+            <option value="0">Non classé</option><option value="1">1 étoile</option><option value="2">2 étoiles</option>
+            <option value="3">3 étoiles</option><option value="4">4 étoiles</option><option value="5">5 étoiles</option>
+          </select>
+        </div>
+        ${champ("n-reg", "Numéro d'enregistrement en mairie", { req: false, placeholder: "73153 000 000 0X", hint: "Délivré par la commune lors de la déclaration de meublé. Vous pourrez le saisir plus tard." })}
+        <button type="submit" class="btn btn-1" style="align-self:flex-start">Créer le dossier</button>
+      </form>
+
+      <div>
+        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce qui suivra</h2></div>
+        <div class="rows">
+          ${[
+            ["Trois justificatifs", "Classement, assurance, diagnostic énergétique. Déposés quand vous les avez sous la main."],
+            ["Un copropriétaire, si besoin", "Vous l'invitez par e-mail depuis la fiche du logement."],
+            ["L'envoi à l'office", "Le bouton ne s'active que lorsque le dossier est complet. L'office n'instruit jamais un dossier à trous."]
+          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  // ------------------------------------------- invitation de copropriété
+  V.invitation = () => {
+    const l = lgt(state.lgtId);
+    const inv = (l.owners || []).find(x => !x.accepted);
+    const primary = (l.owners || []).find(x => x.role === "PRIMARY");
+    return `
+      <div class="head"><div>
+        <h1>Vous êtes invité sur un logement</h1>
+        <p class="lede">Ce que voit la personne invitée en ouvrant le lien reçu. C'est une page publique : elle n'expose que le strict nécessaire, avant toute acceptation.</p>
+      </div></div>
+      <div class="cols">
+        <div class="panel stack" style="gap:16px">
+          <dl class="spec">
+            <dt>Logement</dt><dd>${esc(l.name)}</dd>
+            <dt>Commune</dt><dd>${esc(l.sector)}</dd>
+            <dt>Invité par</dt><dd>${esc(primary ? primary.who : "")}</dd>
+            <dt>Adresse invitée</dt><dd class="num">${esc(inv ? inv.who : "—")}</dd>
+          </dl>
+          <div class="msg"><strong>En acceptant</strong>, vous pourrez consulter et modifier ce dossier, déposer des pièces et l'envoyer à l'office. Chacune de vos actions sera tracée à votre nom et notifiée à l'autre propriétaire.</div>
+          <div class="flexrow">
+            <button class="btn btn-1" data-invite-accept="${l.id}">Accepter</button>
+            <button class="btn btn-2" data-toast="Invitation refusée. Le logement reste au seul déclarant, rien ne se bloque.">Refuser</button>
+          </div>
+        </div>
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que la page ne fait pas</h2></div>
+          <div class="rows">
+            ${[
+              ["Elle n'expose pas l'adresse exacte", "Un lien d'invitation peut se retrouver transféré. Tant que l'invité n'a pas accepté, il voit le nom du bien et sa commune, rien d'autre."],
+              ["Elle ne crée pas de compte à votre place", "L'invité s'inscrit ou se connecte, puis le rattachement se fait."],
+              ["Elle ne bloque personne", "Si l'invitation reste sans réponse, le logement reste au déclarant. Aucun dossier ne se retrouve gelé."]
+            ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+          </div>
+        </div>
+      </div>`;
+  };
+
   V.tdb = () => {
     const list = chores();
     const okCount = state.lgts.filter(l => l.status === "VALIDATED").length;
@@ -717,8 +916,18 @@
             </div>`).join("")}
         </div>
         ${o.length < 2
-          ? `<button class="btn btn-2 btn-s" data-toast="Dans le produit final : saisie de l'e-mail, lien d'invitation valable 30 jours." style="margin-top:16px">Inviter un copropriétaire</button>`
-          : `<p class="small" style="margin-top:16px">Les deux propriétaires modifient le dossier et l'envoient à l'office. Chaque action est tracée au nom de celui qui l'a faite, et notifie l'autre. Tant qu'une invitation n'est pas acceptée, l'invité ne voit rien.</p>`}
+          ? `<form class="flexrow" style="margin-top:16px;gap:10px" data-invite="${l.id}">
+              <label for="inv-${l.id}" class="small" style="flex:none">E-mail du copropriétaire</label>
+              <input id="inv-${l.id}" type="email" required autocomplete="email" placeholder="prenom.nom@example.fr"
+                style="font-family:var(--sans);font-size:14px;padding:8px 11px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);flex:1;min-width:200px">
+              <button type="submit" class="btn btn-2 btn-s">Envoyer l'invitation</button>
+            </form>`
+          : (o.some(x => !x.accepted)
+              ? `<div class="flexrow" style="margin-top:16px;gap:10px">
+                   <button class="btn btn-2 btn-s" data-invite-view="${l.id}">Voir ce que reçoit l'invité</button>
+                   <span class="small">L'invitation expire au bout de 30 jours.</span>
+                 </div>`
+              : "") + `<p class="small" style="margin-top:16px">Les deux propriétaires modifient le dossier et l'envoient à l'office. Chaque action est tracée au nom de celui qui l'a faite, et notifie l'autre. Tant qu'une invitation n'est pas acceptée, l'invité ne voit rien.</p>`}
       </div>`;
   }
 
@@ -728,7 +937,7 @@
         <h1>Mes logements</h1>
         <p class="lede">Chaque bien porte son dossier et son statut. Un bien refusé n'empêche pas les autres d'avancer.</p>
       </div>
-      <button class="btn btn-1" data-toast="Dans le produit final : formulaire de déclaration d'un nouveau bien.">Déclarer un logement</button>
+      <button class="btn btn-1" data-go="logement-nouveau">Déclarer un logement</button>
     </div>
     <div class="rows" style="border-top:2px solid var(--ink)">${state.lgts.map(lgtRow).join("")}</div>`;
 
@@ -1299,7 +1508,32 @@
     siretOut();
   }
 
+  document.addEventListener("change", e => {
+    if (e.target.name === "kind") {
+      const bloc = document.getElementById("bloc-societe");
+      if (bloc) {
+        bloc.hidden = e.target.value !== "societe";
+        const rs = document.getElementById("s-raison");
+        if (rs) rs.required = !bloc.hidden;
+      }
+    }
+  });
+
   document.addEventListener("input", e => {
+    if (e.target.id === "s-pwd") {
+      const m = document.getElementById("s-pwd-meter");
+      if (m) m.innerHTML = pwdMeter(e.target.value);
+      return;
+    }
+    if (e.target.id === "s-siret") {
+      const box = document.getElementById("s-siret-etat");
+      const val = e.target.value.replace(/[\s.]/g, "");
+      if (box) box.innerHTML = /^\d{14}$/.test(val)
+        ? (siretLuhn(val) ? `<span class="tag t-ok">clé de contrôle valide</span>`
+                          : `<span class="tag t-stop">clé de contrôle invalide</span>`)
+        : "";
+      return;
+    }
     if (e.target.id !== "siret-q") return;
     const q = e.target.value;
     state.siret.q = q;
@@ -1313,6 +1547,57 @@
     }
     clearTimeout(siretTimer);
     siretTimer = setTimeout(() => siretRun(q), 350);
+  });
+
+
+  // --- formulaires : soumission native, donc validation HTML gratuite
+  document.addEventListener("submit", e => {
+    const f = e.target;
+    e.preventDefault();
+
+    if (f.id === "form-signup") {
+      const societe = f.querySelector('input[name="kind"]:checked').value === "societe";
+      const v = id => (document.getElementById(id) || {}).value || "";
+      state.owner = {
+        firstName: v("s-prenom") || "Claire", lastName: v("s-nom") || "Ravanel",
+        email: v("s-mail"), phone: v("s-tel"),
+        kind: societe ? (v("s-raison") || "Société") : "Particulier",
+        town: v("s-ville") || "—"
+      };
+      state.pending = v("s-mail");
+      state.view = "verif";
+      note("Compte créé", "en attente de vérification de l'adresse");
+      return draw();
+    }
+
+    if (f.id === "form-lgt") {
+      const v = id => (document.getElementById(id) || {}).value || "";
+      const id = "LGT-" + String(state.lgts.length + 1).padStart(3, "0");
+      state.lgts.push({
+        id, name: v("n-nom"), sector: v("n-secteur"),
+        street: v("n-adresse"), beds: +v("n-lits") || 0, area: +v("n-surface") || 0,
+        stars: +v("n-classement") || 0, reg: v("n-reg").trim(), status: "DRAFT",
+        owners: [{ who: `${state.owner.firstName} ${state.owner.lastName}`, role: "PRIMARY", accepted: true }],
+        docs: [
+          { label: "Classement meublé de tourisme", file: "", status: "MISSING", until: "" },
+          { label: "Attestation d'assurance", file: "", status: "MISSING", until: "" },
+          { label: "Diagnostic de performance énergétique", file: "", status: "MISSING", until: "" }
+        ]
+      });
+      note("Logement déclaré", `${id} · ${v("n-nom")}`);
+      toast("Dossier créé. Il vous reste les justificatifs à déposer.");
+      return go("logement", id);
+    }
+
+    if (f.dataset.invite) {
+      const l = lgt(f.dataset.invite);
+      const mail = f.querySelector('input[type="email"]').value.trim();
+      if (!mail) return;
+      l.owners.push({ who: mail, role: "CO_OWNER", accepted: false });
+      note("Copropriétaire invité", `${l.id} · ${mail}`);
+      toast("Invitation envoyée. Le lien est valable 30 jours.");
+      return draw();
+    }
   });
 
   document.addEventListener("click", e => {
@@ -1332,7 +1617,7 @@
       return siretOut();
     }
 
-    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-rev],[data-send],[data-up],[data-reg],[data-cgu],[data-adh]");
+    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-send],[data-up],[data-reg],[data-cgu],[data-adh]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
     const d = t.dataset;
@@ -1342,6 +1627,23 @@
     if (d.logout) return signOut(false);
     if (d.go) return go(d.go, d.id);
     if (d.toast) return toast(d.toast);
+
+    if (d.verify) {                                  // le lien de vérification a été ouvert
+      state.pending = null;
+      state.auth = "owner";
+      state.view = "tdb";
+      note("Adresse vérifiée", "compte actif");
+      toast("Adresse confirmée. Bienvenue.");
+      return draw();
+    }
+    if (d.inviteView) { state.lgtId = d.inviteView; return go("invitation"); }
+    if (d.inviteAccept) {
+      const l = lgt(d.inviteAccept);
+      const inv = (l.owners || []).find(x => !x.accepted);
+      if (inv) { inv.accepted = true; note("Invitation acceptée", `${l.id} · ${inv.who}`); }
+      toast("Invitation acceptée. Vous avez accès au dossier.");
+      return go("logement", l.id);
+    }
 
     if (d.up) {
       const [id, i] = d.up.split(":");
