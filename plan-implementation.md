@@ -348,7 +348,7 @@ est vérifiable par le client ou par un tiers, et conditionne la réception du l
 | Pas de 2FA | TOTP obligatoire pour les comptes OT | Créer un compte agent : 2FA imposée à la première connexion |
 | Dépendances de 2016 | Lockfile + Dependabot + CI qui casse sur vulnérabilité haute | Journal de la CI |
 | Coller bloqué sur le mot de passe | Autorisé | Coller dans le champ : ça fonctionne |
-| GA4 avant consentement | Aucun traceur avant accord explicite | Onglet réseau avant de cliquer sur le bandeau : aucune requête |
+| GA4 avant consentement | Aucun traceur avant accord explicite ; refuser et retirer coûtent un clic, comme accepter | Onglet réseau avant de cliquer sur le bandeau : aucune requête. Puis retirer son accord depuis la page « Traceurs » : le script ne revient pas |
 | Contrôle d'accès tardif (200 vide) | Middleware + filtre par organisation ; 401 et 403 distingués | Propriétaire A appelant l'URL d'un bien de B : 403, pas une page vide |
 | Validation client seule | Zod partagé, revalidation serveur obligatoire | POST direct hors formulaire avec données invalides : rejeté |
 

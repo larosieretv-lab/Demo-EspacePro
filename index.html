@@ -327,10 +327,42 @@
   }
   @keyframes rise { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
 
+  /* ------------------------------------------- bandeau de consentement */
+  .consent {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
+    background: var(--paper); border-top: 2px solid var(--ink);
+    box-shadow: 0 -20px 44px -26px rgba(49,12,37,.5);
+    max-height: 86vh; overflow-y: auto;
+    animation: rise .3s cubic-bezier(.2,.75,.3,1);
+  }
+  .consent .in {
+    max-width: var(--shell); margin: 0 auto; padding: 20px 24px 22px;
+    display: flex; flex-wrap: wrap; gap: 16px 40px; align-items: center;
+  }
+  .consent .say { flex: 1 1 400px; min-width: 0; }
+  .consent h2 { font-size: 18px; font-weight: 600; letter-spacing: -.012em; }
+  .consent p { font-size: 14px; line-height: 1.55; color: var(--ink-2); margin-top: 8px; max-width: 66ch; }
+  /* les deux boutons de décision sont identiques : refuser ne doit pas coûter un clic de plus */
+  .consent .acts { flex: 0 1 auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .consent .acts .btn { min-width: 132px; justify-content: center; }
+  .consent .prefs { flex: 1 1 100%; border-top: 1px solid var(--rule); }
+  .consent .cat { display: flex; gap: 15px; padding: 14px 0; border-bottom: 1px solid var(--rule); align-items: flex-start; }
+  .consent .cat input { flex: none; margin: 4px 0 0; width: 17px; height: 17px; accent-color: var(--rose-deep); }
+  .consent .cat .t { display: block; font-weight: 500; color: var(--ink); font-size: 14.5px; }
+  .consent .cat .d { font-size: 13px; color: var(--ink-3); margin-top: 2px; line-height: 1.5; }
+  body.consent-on { padding-bottom: 230px; }
+
   .view { animation: soften .24s ease-out; }
   @keyframes soften { from { opacity: 0; } to { opacity: 1; } }
 
   @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+
+  @media (max-width: 760px) {
+    .consent .in { padding: 16px 18px 18px; }
+    .consent .acts { flex: 1 1 100%; }
+    .consent .acts .btn { flex: 1 1 44%; min-width: 0; }
+    body.consent-on { padding-bottom: 300px; }
+  }
 
   @media (max-width: 900px) {
     .cols, .cols3 { grid-template-columns: 1fr; gap: 30px; }
@@ -344,6 +376,10 @@
 </head>
 <body>
 <a class="skip" href="#main">Aller au contenu principal</a>
+
+<!-- Le bandeau vient tôt dans le document : au clavier, on tombe dessus avant le reste. -->
+<div id="consent-host"></div>
+
 <div class="notice">
   <div class="in">
     <b>Démonstration</b>
@@ -358,6 +394,7 @@
       </div>
     </div>
     <button type="button" class="lnk" data-go="siret">Vérification SIRET</button>
+    <button type="button" class="lnk" data-go="traceurs">Traceurs</button>
     <button type="button" class="lnk" data-go="compare">Ce qui change</button>
   </div>
 </div>
@@ -446,6 +483,7 @@
     adhesion: { season: "2026-2027", status: "DRAFT", cgu: false },
     pending: null,
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
+    consent: { decided: false, audience: false, at: null, open: false },
     journal: [
       { at: "04/08 09:12", who: "c.ravanel@example.fr", act: "Connexion", detail: "Réussie, après deux tentatives échouées" },
       { at: "04/08 09:14", who: "c.ravanel@example.fr", act: "Envoi de dossier", detail: "LGT-002 transmis pour instruction" },
@@ -509,7 +547,7 @@
   // qui a le droit de voir quoi — la même table que le middleware du vrai produit
   const ACCESS = {
     accueil: "public", connexion: "public", compare: "public", siret: "public",
-    inscription: "public", verif: "public", invitation: "public",
+    inscription: "public", verif: "public", invitation: "public", traceurs: "public",
     "logement-nouveau": "owner",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
     "ot-file": "ot", "ot-proprios": "ot", "ot-journal": "ot"
@@ -998,7 +1036,7 @@
 
       <div class="section">
         <div class="bar"><h2>Pièces justificatives</h2><span class="count">${l.docs.length}</span></div>
-        <div class="tablewrap"><table><th scope="col"ead><tr><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col">Statut</th><th scope="col"></th></tr></thead><tbody>${docRows}</tbody></table></div>
+        <div class="tablewrap"><table><thead><tr><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col">Statut</th><th scope="col"></th></tr></thead><tbody>${docRows}</tbody></table></div>
         <p class="small" style="margin-top:16px">Les fichiers ne sont ni en base de données ni publics : stockage privé à Paris, accès par lien signé de courte durée, vérifié contre le compte qui le demande.</p>
       </div>`;
   };
@@ -1134,7 +1172,7 @@
       <div class="section" style="margin-top:0">
         <div class="bar"><h2>Pièces en attente</h2><span class="count">${q.length}</span></div>
         ${q.length
-          ? `<div class="tablewrap"><table><th scope="col"ead><tr><th scope="col">Logement</th><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col"></th></tr></thead><tbody>${rows}</tbody></table></div>`
+          ? `<div class="tablewrap"><table><thead><tr><th scope="col">Logement</th><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col"></th></tr></thead><tbody>${rows}</tbody></table></div>`
           : `<div class="msg ok" style="margin-top:18px"><strong>File vide.</strong> Toutes les pièces déposées ont été instruites.</div>`}
       </div>
       ${adh}`;
@@ -1152,7 +1190,7 @@
         <button class="btn btn-2" data-toast="Export CSV généré (démonstration).">Exporter en CSV</button>
       </div>
       <div class="tablewrap"><table>
-        <th scope="col"ead><tr><th scope="col">Propriétaire</th><th scope="col">Commune</th><th scope="col">Logements</th><th scope="col">Lits</th><th scope="col">Adhésion</th></tr></thead>
+        <thead><tr><th scope="col">Propriétaire</th><th scope="col">Commune</th><th scope="col">Logements</th><th scope="col">Lits</th><th scope="col">Adhésion</th></tr></thead>
         <tbody>
           <tr>
             <td><span style="font-weight:500;color:var(--ink)">${esc(state.owner.lastName.toUpperCase() + " " + state.owner.firstName)}</span><br><span class="sub">${esc(state.owner.email)}</span></td>
@@ -1172,7 +1210,7 @@
       <p class="lede">Qui a fait quoi, quand. Absent de TignesPro, et c'est la première chose qui manque le jour d'une contestation.</p>
     </div></div>
     <div class="tablewrap"><table>
-      <th scope="col"ead><tr><th scope="col">Horodatage</th><th scope="col">Compte</th><th scope="col">Action</th><th scope="col">Détail</th></tr></thead>
+      <thead><tr><th scope="col">Horodatage</th><th scope="col">Compte</th><th scope="col">Action</th><th scope="col">Détail</th></tr></thead>
       <tbody>${state.journal.map(j => `
         <tr>
           <td class="num" style="color:var(--ink-3);white-space:nowrap">${esc(j.at)}</td>
@@ -1391,6 +1429,186 @@
       </div>`;
   };
 
+  // ------------------------------------------- traceurs et consentement
+  const CONSENT_VERSION = "2026-08-A";
+
+  // Origines tierces connues : on ne les cache pas, on les explique.
+  const ORIGIN_NOTE = {
+    "https://recherche-entreprises.api.gouv.fr":
+      "API publique de l'État. Appelée uniquement pendant que vous tapez dans l'écran de vérification SIRET, sans cookie et sans mesure d'audience."
+  };
+
+  // Ce que le navigateur a réellement chargé — relevé, pas déclaré.
+  function netAudit() {
+    if (!window.performance || !performance.getEntriesByType) return null;
+    return performance.getEntriesByType("resource").map(e => {
+      if (/^data:/.test(e.name)) {
+        return { origin: "intégrée au fichier", label: "donnée en clair dans la page", kind: e.initiatorType || "—", third: false };
+      }
+      let origin = "origine illisible", label = e.name;
+      try {
+        const u = new URL(e.name, location.href);
+        origin = u.origin;
+        label = u.pathname.split("/").pop() || u.host;
+      } catch (_) { /* URL exotique : on l'affiche telle quelle */ }
+      return { origin, label, kind: e.initiatorType || "—", third: origin !== location.origin };
+    });
+  }
+
+  V.traceurs = () => {
+    const c = state.consent;
+    const rows = netAudit();
+    const third = (rows || []).filter(r => r.third);
+    const origins = [...new Set(third.map(r => r.origin))];
+
+    const choix = !c.decided
+      ? `<div class="msg wait"><strong>Vous n'avez pas encore répondu.</strong> Le bandeau attend en bas de l'écran, et tant qu'il attend, rien n'est chargé. C'est l'ordre qui compte : la question d'abord, le script ensuite.</div>
+         <div class="flexrow" style="margin-top:18px"><button class="btn btn-2" data-consent="reopen">Voir le bandeau</button></div>`
+      : `<dl class="spec">
+           <dt>Votre choix</dt><dd>${c.audience ? "Mesure d'audience acceptée" : "Tout refusé"}</dd>
+           <dt>Enregistré le</dt><dd class="num">${esc(c.at)}</dd>
+           <dt>Version du bandeau</dt><dd class="num">${CONSENT_VERSION}</dd>
+           <dt>Conservation du choix</dt><dd>Six mois, puis la question est reposée</dd>
+         </dl>
+         <div class="flexrow" style="margin-top:18px">
+           <button class="btn btn-2" data-consent="reopen">Modifier mon choix</button>
+           ${c.audience ? `<button class="btn btn-no" data-consent="withdraw">Retirer mon consentement</button>` : ""}
+         </div>
+         <p class="small" style="margin-top:14px">Retirer se fait au même endroit et en un clic, comme accorder. Le choix, sa date et la version du bandeau sont inscrits au journal d'audit : c'est ce qui fait la preuve du consentement le jour où on la demande.</p>`;
+
+    const audit = rows === null
+      ? `<div class="msg"><strong>Relevé indisponible.</strong> Ce navigateur n'expose pas l'API de performance.</div>`
+      : `<div class="figures" style="margin-top:2px">
+           <div>
+             <div class="val num">${third.length}</div>
+             <div class="cap"><b>requête${third.length === 1 ? "" : "s"} vers un tiers</b> depuis l'ouverture de cette page</div>
+           </div>
+           <div>
+             <div class="val num">${rows.length}</div>
+             <div class="cap"><b>requête${rows.length === 1 ? "" : "s"} au total</b>, tous domaines confondus</div>
+           </div>
+         </div>
+         ${third.length === 0
+           ? `<div class="msg ok" style="margin-top:20px"><strong>Aucune. Pas une seule.</strong> Cette page est un fichier unique : la police, les icônes, les styles et le code y sont embarqués. Ouvrez l'onglet réseau de votre navigateur, vous verrez la même chose que ce compteur.</div>`
+           : `<div class="rows" style="margin-top:20px">${origins.map(o => `
+               <div class="row"><div class="grow">
+                 <div class="title num" style="font-size:14px">${esc(o)}</div>
+                 <div class="sub" style="line-height:1.5">${esc(ORIGIN_NOTE[o] || "Origine tierce non attendue à cet endroit — à examiner.")}</div>
+               </div><span class="tag ${ORIGIN_NOTE[o] ? "t-info" : "t-stop"}">${third.filter(r => r.origin === o).length} requête${third.filter(r => r.origin === o).length > 1 ? "s" : ""}</span></div>`).join("")}</div>
+              <p class="small" style="margin-top:14px">Aucun traceur dans cette liste : une API appelée à votre demande n'est pas une mesure d'audience. La distinction est justement ce que le bandeau doit rendre lisible.</p>`}
+         ${c.audience ? `<div class="msg wait" style="margin-top:20px"><strong>Et le script de mesure ?</strong> En production, <span class="num">matomo.js</span> aurait été inséré à ${esc(c.at)}, depuis <span class="num">stats.larosiere.net</span> — un sous-domaine de l'office, pas un serveur de Google. Cette maquette ne le charge pas : elle vous montre le moment où il l'aurait été.</div>` : ""}`;
+
+    const cookies = [
+      ["lr_session", "Vous garder connecté d'une page à l'autre. HttpOnly, Secure, SameSite=Lax.", "30 jours glissants", "ok", "Exempté"],
+      ["lr_consent", "Retenir la réponse que vous venez de donner, pour ne pas reposer la question à chaque page.", "6 mois", "ok", "Exempté"],
+      ["_pk_id / _pk_ses", "Mesure d'audience Matomo : pages vues, parcours, rien de plus. IP tronquée, données hébergées en France.", "13 mois / 30 minutes", "wait", "Consentement requis"]
+    ];
+
+    return `
+      <div class="head"><div>
+        <h1>Traceurs et cookies</h1>
+        <p class="lede">Trois cookies, dont un seul demande votre accord. Cette page ne vous l'explique pas : elle vous laisse le vérifier.</p>
+      </div></div>
+
+      <div class="cols">
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Votre choix</h2></div>
+          <div style="margin-top:20px">${choix}</div>
+        </div>
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que ce navigateur a réellement chargé</h2></div>
+          ${audit}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="bar"><h2>Les cookies de cet espace</h2><span class="count">3</span></div>
+        <div class="tablewrap" style="margin-top:18px"><table>
+          <thead><tr><th scope="col">Nom</th><th scope="col">À quoi il sert</th><th scope="col">Durée</th><th scope="col">Accord</th></tr></thead>
+          <tbody>${cookies.map(([n, r, d, tag, txt]) => `
+            <tr>
+              <td class="num" style="font-size:13.5px;white-space:nowrap">${esc(n)}</td>
+              <td style="color:var(--ink-2)">${esc(r)}</td>
+              <td style="white-space:nowrap;color:var(--ink-3)">${esc(d)}</td>
+              <td><span class="tag t-${tag}">${esc(txt)}</span></td>
+            </tr>`).join("")}</tbody>
+        </table></div>
+        <p class="small" style="margin-top:18px">Pas de quatrième ligne. Aucun cookie publicitaire, aucun réseau social, aucun partage avec un tiers — un office de tourisme n'a rien à revendre de la visite d'un propriétaire venu déposer son attestation d'assurance.</p>
+      </div>
+
+      <div class="section">
+        <div class="bar"><h2>Au même endroit, chez TignesPro</h2></div>
+        <div class="msg stop" style="margin-top:18px"><strong>Le bandeau est là, et Google Analytics part quand même avant.</strong> tarteaucitron.js est bien installé pour recueillir le consentement ; la mesure GA4 (identifiant <span class="num">G-8HV6D7CKRE</span>) se charge sans l'attendre. Au moment où la question apparaît, la réponse est déjà partie. Constat relevé de l'extérieur le 4 août 2026, reproductible en ouvrant l'onglet réseau avant de toucher au bandeau.</div>
+        <p class="small" style="margin-top:16px">Ce n'est pas une faille de sécurité, c'est un manquement au RGPD — et il se règle avec un ordre d'exécution, pas avec un budget.</p>
+      </div>`;
+  };
+
+  function stamp() {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} à ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  function paintConsent() {
+    const host = document.getElementById("consent-host");
+    const c = state.consent;
+    const show = !c.decided || c.open;
+    document.body.classList.toggle("consent-on", show);
+    if (!show) { host.innerHTML = ""; return; }
+
+    const prefs = c.open ? `
+      <div class="prefs">
+        <div class="cat">
+          <input type="checkbox" id="c-need" checked disabled>
+          <div>
+            <label class="t" for="c-need">Strictement nécessaire</label>
+            <div class="d">Votre session de connexion, et la mémoire de ce choix. Sans eux l'espace ne fonctionne pas : la loi ne demande pas votre accord pour ceux-là, il n'y a donc pas de case à décocher — et on ne fait pas semblant du contraire.</div>
+          </div>
+        </div>
+        <div class="cat">
+          <input type="checkbox" id="c-audience"${c.audience ? " checked" : ""}>
+          <div>
+            <label class="t" for="c-audience">Mesure d'audience</label>
+            <div class="d">Matomo hébergé en France, adresse IP tronquée, aucun partage. Décoché par défaut, et il le reste tant que vous ne le cochez pas vous-même.</div>
+          </div>
+        </div>
+        <div class="flexrow" style="padding-top:15px">
+          <button type="button" class="btn btn-1" data-consent="save">Enregistrer mes choix</button>
+          ${c.decided ? `<button type="button" class="btn btn-2" data-consent="close">Annuler</button>` : ""}
+          <span class="small">Bandeau version ${CONSENT_VERSION} — conservée avec l'horodatage.</span>
+        </div>
+      </div>` : "";
+
+    host.innerHTML = `
+      <section class="consent" role="region" aria-label="Traceurs et cookies">
+        <div class="in">
+          <div class="say">
+            ${c.decided
+              ? `<h2>Revenir sur votre choix.</h2>
+                 <p>Vous avez répondu le ${esc(c.at)}. Retirer un accord se fait aussi simplement que le donner : c'est la même fenêtre, au même endroit, sans détour par un formulaire de contact.</p>`
+              : `<h2>Rien n'a encore été chargé.</h2>
+                 <p>Aucune mesure d'audience, aucun script tiers : cette page attend votre réponse avant d'en charger un seul. Refuser prend un clic, exactement comme accepter — même bouton, même taille, même place.</p>`}
+          </div>
+          <div class="acts">
+            <button type="button" class="btn btn-1" data-consent="refuse">Tout refuser</button>
+            <button type="button" class="btn btn-1" data-consent="accept">Tout accepter</button>
+            <button type="button" class="btn btn-2" data-consent="open" aria-expanded="${c.open ? "true" : "false"}">Choisir</button>
+          </div>
+          ${prefs}
+        </div>
+      </section>`;
+  }
+
+  function decide(audience) {
+    const c = state.consent;
+    Object.assign(c, { audience: !!audience, decided: true, open: false, at: stamp() });
+    note("Consentement", `${audience ? "mesure d'audience acceptée" : "tout refusé"} · bandeau ${CONSENT_VERSION}`);
+    toast(audience
+      ? "Accord enregistré. Le script de mesure serait chargé maintenant — pas avant."
+      : "Refus enregistré. Aucun traceur, et la question ne revient pas avant six mois.");
+    paintConsent();
+    if (state.view === "traceurs") draw();
+  }
+
   V.compare = () => {
     const lines = [
       ["Jeton anti-CSRF", "Absent de tous les formulaires", "Natif, plus SameSite=Lax"],
@@ -1412,7 +1630,7 @@
         <p class="lede">Constats relevés de l'extérieur sur TignesPro le 4 août 2026, et le traitement prévu pour La Rosière. Aucun test intrusif : ce sont des défenses absentes, pas des failles démontrées.</p>
       </div></div>
       <div class="tablewrap"><table class="cmp">
-        <th scope="col"ead><tr><th scope="col">Point</th><th scope="col">TignesPro aujourd'hui</th><th scope="col">Espace La Rosière</th></tr></thead>
+        <thead><tr><th scope="col">Point</th><th scope="col">TignesPro aujourd'hui</th><th scope="col">Espace La Rosière</th></tr></thead>
         <tbody>${lines.map(l => `<tr><td>${esc(l[0])}</td><td class="was">${esc(l[1])}</td><td class="now">${esc(l[2])}</td></tr>`).join("")}</tbody>
       </table></div>`;
   };
@@ -1432,7 +1650,10 @@
     const p = n => String(n).padStart(2, "0");
     state.journal.unshift({
       at: `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`,
-      who: state.auth === "ot" ? state.agent.email : state.owner.email,
+      // un visiteur non connecté laisse une trace, mais pas une identité
+      who: state.auth === "ot" ? state.agent.email
+         : state.auth === "owner" ? state.owner.email
+         : "visiteur non identifié",
       act, detail
     });
   }
@@ -1443,10 +1664,12 @@
       else { state.blocked = state.view; state.view = "connexion"; }
     }
     paintChrome();
+    paintConsent();
     const fn = V[state.view] || V.accueil;
     document.getElementById("main").innerHTML = `<div class="view">${fn()}</div>
       <footer class="pied" role="contentinfo">
         <span>Maquette de proposition — Espace propriétaires de La Rosière</span>
+        <span><a href="#" data-go="traceurs">Traceurs et cookies</a></span>
         <span>Charte et couleurs relevées sur larosiere.net · Lexend (licence libre) ; les titres utilisent TT Chocolate dans la charte réelle</span>
       </footer>`;
     if (state.view === "siret") siretOut();
@@ -1597,6 +1820,22 @@
       note("Copropriétaire invité", `${l.id} · ${mail}`);
       toast("Invitation envoyée. Le lien est valable 30 jours.");
       return draw();
+    }
+  });
+
+  // --- le bandeau vit hors de <main> : son propre écouteur, pour ne pas redessiner la vue
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-consent]");
+    if (!t) return;
+    switch (t.dataset.consent) {
+      case "open":     state.consent.open = true;  return paintConsent();
+      case "close":    state.consent.open = false; return paintConsent();
+      case "reopen":   state.consent.open = true;  paintConsent();
+                       return document.querySelector(".consent").scrollIntoView({ block: "nearest" });
+      case "accept":   return decide(true);
+      case "refuse":   return decide(false);
+      case "withdraw": return decide(false);
+      case "save":     return decide(document.getElementById("c-audience").checked);
     }
   });
 
