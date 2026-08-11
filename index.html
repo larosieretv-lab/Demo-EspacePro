@@ -1272,7 +1272,7 @@
         <button class="btn btn-1" data-cgu="1">J'accepte les conditions générales</button>`;
     } else if (a.status === "DRAFT") {
       body = `
-        <div class="msg ok"><strong>Conditions acceptées</strong> le 04/08/2026 à 14 h 07, version <span class="num">2026-07-A</span>.</div>
+        <div class="msg ok"><strong>Conditions acceptées</strong> le ${esc(a.cguAt || "—")}, version <span class="num">2026-07-A</span>. C'est cet horodatage qui fait foi, pas une case cochée quelque part.</div>
         <p style="margin:18px 0">Votre dossier comporte ${state.lgts.length} logements pour ${beds()} lits. Vous pouvez le transmettre à l'office.</p>
         <button class="btn btn-1" data-adh="send">Envoyer mon dossier d'adhésion</button>`;
     } else if (a.status === "SUBMITTED") {
@@ -1296,12 +1296,12 @@
     const at = order.indexOf(a.status);
     const steps = `<div class="steps">${order.map((s, i) => `
       <div class="s${i <= at ? " on" : ""}"><span class="dot"></span><span class="lab">${names[s]}</span></div>
-      ${i < 3 ? `<span class="link${i < at ? " on" : ""}"></span>` : ""}`).join("")}</div>`;
+      ${i < order.length - 1 ? `<span class="link${i < at ? " on" : ""}"></span>` : ""}`).join("")}</div>`;
 
     return `
       <div class="head"><div>
         <h1>Mon adhésion</h1>
-        <p class="lede">Saison ${a.season}. Conditions générales, envoi du dossier, validation par l'office, facturation : le parcours que TignesPro a mis en place et qui fonctionne.</p>
+        <p class="lede">Saison ${a.season}. Conditions générales, envoi du dossier, validation par l'office, puis appel de la cotisation — que l'office lance par ses moyens habituels, hors de cet outil en version 1.</p>
       </div></div>
       ${steps}
       <div class="cols">
@@ -2602,6 +2602,7 @@
 
     if (d.cgu) {
       state.adhesion.cgu = true;
+      state.adhesion.cguAt = stamp();
       note("Conditions acceptées", "version 2026-07-A");
       toast("Conditions acceptées, horodatage conservé.");
       return draw();
