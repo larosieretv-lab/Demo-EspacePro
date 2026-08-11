@@ -2206,9 +2206,64 @@
         if (!locked()) clearInterval(lockTimer);
       }, 1000);
     }
+    ecrireAdresse();
     window.scrollTo({ top: 0, behavior: "instant" });
   }
   let lockTimer = null;
+
+  // ------------------------------------------------------------- adresses
+  // Un écran = une adresse. On peut envoyer #recette à quelqu'un, et le bouton
+  // retour du navigateur fait ce qu'on attend de lui.
+  // Trois écrans n'ont pas d'adresse : ils n'existent qu'au milieu d'un parcours.
+  const SANS_ADRESSE = { mfa: 1, refus: 1, verif: 1 };
+
+  let pushOk = true;        // faux si le navigateur refuse pushState (page ouverte en fichier local)
+  let dernierHash = null;   // ce qu'on vient d'écrire soi-même, pour ne pas le relire en boucle
+
+  function ecrireAdresse() {
+    if (SANS_ADRESSE[state.view]) return;
+    let h = "#" + state.view;
+    if (state.view === "logement" && state.lgtId) h += "/" + state.lgtId;
+    if (state.view === "ot-proprio" && state.otId) h += "/" + encodeURIComponent(state.otId);
+    if (location.hash === h) return;
+    dernierHash = h;
+    if (pushOk) {
+      try { return void history.pushState(null, "", h); }
+      catch (_) { pushOk = false; }   // origine nulle : on se rabat sur le hash
+    }
+    location.hash = h;
+  }
+
+  function lireAdresse() {
+    const brut = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+    if (!brut) return null;
+    const [view, id] = brut.split("/");
+    return V[view] && !SANS_ADRESSE[view] ? { view, id } : null;
+  }
+
+  function poserAdresse(r) {
+    if (r.id) {
+      if (r.view === "ot-proprio") state.otId = r.id;
+      else state.lgtId = r.id;
+    }
+  }
+
+  // retour et suivant du navigateur. Les deux événements peuvent arriver pour un seul
+  // mouvement : on ne traite qu'un changement d'adresse qu'on n'a pas écrit soi-même.
+  function restaurer() {
+    if (location.hash === dernierHash) return;
+    dernierHash = location.hash;
+    const r = lireAdresse();
+    if (!r) { state.view = "accueil"; return draw(); }
+    poserAdresse(r);
+    if (allowed(r.view)) { state.blocked = null; state.view = r.view; }
+    else if (state.auth) state.view = "refus";     // bon compte, mauvais rôle
+    else { state.blocked = r.view; state.view = "connexion"; }
+    draw();
+  }
+
+  window.addEventListener("popstate", restaurer);
+  window.addEventListener("hashchange", restaurer);
 
   function go(view, id) {
     if (id) state.lgtId = id;
@@ -2624,6 +2679,17 @@
       return draw();
     }
   });
+
+  // un lien profond vers un espace privé passe par la connexion, puis y revient
+  (function amorcer() {
+    const r = lireAdresse();
+    dernierHash = location.hash;
+    if (!r) return;
+    poserAdresse(r);
+    if (allowed(r.view)) return void (state.view = r.view);
+    state.blocked = r.view;
+    state.view = "connexion";
+  })();
 
   draw();
 })();
