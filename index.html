@@ -383,7 +383,7 @@
 <div class="notice">
   <div class="in">
     <b>Démonstration</b>
-    <span>Maquette de proposition — données fictives, aucun lien à ce stade avec l'office de tourisme.</span>
+    <span>Maquette de proposition — données fictives, aucun lien à ce stade avec l'office de tourisme. Rien n'est enregistré, aucun e-mail n'est envoyé.</span>
     <span class="push"></span>
     <div class="as">
       <span>Ouvrir la session d'un</span>
@@ -704,7 +704,11 @@
     <div class="cols">
       <form class="panel stack" style="gap:17px" id="form-oubli">
         ${champ("o-mail", "Adresse e-mail", { type: "email", autocomplete: "email", placeholder: "vous@exemple.fr", value: state.reset.mail })}
-        ${state.reset.sent ? `<div class="msg ok"><strong>Si un compte existe pour cette adresse, un lien vient d'y être envoyé.</strong> Il est valable une heure et ne fonctionne qu'une fois.</div>` : ""}
+        ${state.reset.sent ? `<div class="stack" style="gap:8px">
+          <span class="small">Réponse du serveur, mot pour mot :</span>
+          <div class="msg ok"><strong>Si un compte existe pour cette adresse, un lien vient d'y être envoyé.</strong> Il est valable une heure et ne fonctionne qu'une fois.</div>
+          <span class="small">Dans cette maquette, aucun e-mail ne part : c'est la phrase qui est démontrée, pas l'envoi.</span>
+        </div>` : ""}
         <div class="flexrow">
           <button type="submit" class="btn btn-1">Envoyer le lien</button>
           <button type="button" class="btn btn-2" data-oubli-test="1">Essayer une adresse qui n'existe pas</button>
@@ -847,7 +851,7 @@
         </label>
 
         <button type="submit" class="btn btn-1" style="align-self:flex-start">Créer mon compte</button>
-        <p class="small">Maquette : rien n'est transmis, aucun compte n'est créé.</p>
+        <p class="small">Maquette : rien n'est transmis, aucun compte n'est créé, <strong>aucun e-mail n'est envoyé</strong>. Tout se joue dans votre navigateur, et disparaît quand vous fermez l'onglet.</p>
       </form>
 
       <div>
@@ -866,13 +870,14 @@
   V.verif = () => `
     <div class="head"><div>
       <h1>Vérifiez votre boîte mail</h1>
-      <p class="lede">Un lien vient d'être envoyé à <strong>${esc(state.pending || "")}</strong>. Il est valable une heure et ne sert qu'une fois. Tant qu'il n'est pas ouvert, le compte existe mais ne donne accès à rien.</p>
+      <p class="lede">Dans le produit, un lien part à <strong>${esc(state.pending || "")}</strong> : valable une heure, utilisable une fois. Tant qu'il n'est pas ouvert, le compte existe mais ne donne accès à rien.</p>
     </div></div>
     <div class="cols">
       <div class="panel stack" style="gap:16px">
-        <div class="msg"><strong>Pourquoi cette étape.</strong> Sans elle, n'importe qui crée un compte avec l'adresse de quelqu'un d'autre, et l'office se retrouve avec des dossiers fantômes à démêler en octobre.</div>
-        <button class="btn btn-1" data-verify="1" style="align-self:flex-start">Ouvrir le lien reçu</button>
-        <button class="btn btn-2 btn-s" data-toast="Nouveau lien envoyé. Le précédent est invalidé." style="align-self:flex-start">Renvoyer le lien</button>
+        <div class="msg wait"><strong>N'allez pas voir dans votre boîte : rien n'y est.</strong> Cette maquette est un fichier unique, sans serveur, sans base de données et sans service d'envoi. Aucun e-mail n'a été expédié et aucun compte n'a été créé. Le bouton ci-dessous joue ce que produirait l'ouverture du lien.</div>
+        <div class="msg"><strong>Pourquoi cette étape existera.</strong> Sans elle, n'importe qui crée un compte avec l'adresse de quelqu'un d'autre, et l'office se retrouve avec des dossiers fantômes à démêler en octobre.</div>
+        <button class="btn btn-1" data-verify="1" style="align-self:flex-start">Jouer l'ouverture du lien</button>
+        <button class="btn btn-2 btn-s" data-toast="Dans le produit : nouveau lien envoyé, le précédent invalidé. Ici, rien ne part." style="align-self:flex-start">Renvoyer le lien</button>
       </div>
       <div>
         <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Le jeton</h2></div>
