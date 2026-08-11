@@ -412,6 +412,41 @@ CI et environnement de recette en ligne, prêt à recevoir les maquettes.
 
 ---
 
+## 12 bis. La maquette qui accompagne ce plan
+
+`index.html` est une **maquette de façade** : un fichier unique, à ouvrir dans un navigateur.
+Elle sert à discuter d'écrans réels plutôt que de captures, et à rendre vérifiables les
+promesses de sécurité du §8 au lieu de les affirmer.
+
+**Ce qu'elle démontre, et qu'on peut manipuler :**
+
+| Parcours | Ce qu'on peut y faire |
+|---|---|
+| Créer un compte | Particulier ou société, jauge de robustesse, contrôle de clé SIRET, collage autorisé |
+| Vérification SIRET | Appel réel à l'annuaire des entreprises de l'État, avec repli local si l'API tombe |
+| Déclarer un logement | Le dossier se crée en brouillon, avec ses pièces manquantes et son avancement |
+| Copropriété | Invitation d'un second propriétaire, et l'écran que reçoit l'invité avant d'accepter |
+| Instruction côté office | Validation et **refus motivé** d'une pièce, motif lu par le propriétaire |
+| Échéances | Une assurance qui n'atteint pas l'ouverture de la saison remonte des deux côtés |
+| Annuaire | Recherche sans accent, filtres par adhésion, fiche consolidée, exports CSV réels |
+| Connexion | Cinq échecs puis verrouillage de quinze minutes, décompte à l'écran |
+| Mot de passe oublié | Réponse identique que l'adresse existe ou non, testable en un clic |
+| Second facteur | Code à six chiffres imposé à l'agent, sans contournement |
+| Traceurs | Compteur des requêtes réellement parties du navigateur, lu dans l'API de performance |
+| Recette | Les treize constats du §8, dont sept avec un bouton qui ouvre la preuve |
+
+**Ce qu'elle ne fait pas, et ne peut pas faire.** Aucun serveur, aucune base, aucun service
+d'envoi : **aucun e-mail ne part**, aucun compte n'est créé, rien n'est conservé après la
+fermeture de l'onglet. Publiée sur GitHub Pages — de l'hébergement de fichiers statiques —
+elle n'exécute par construction aucun code côté serveur. Les six constats restants du §8
+(CSRF, CSP, redirection HTTP, dépendances, cookie rejoué, revalidation serveur) se vérifient
+sur l'environnement de recette de la S1, pas avant.
+
+Les données y sont fictives, y compris les huit propriétaires de l'annuaire, qui n'existent
+que pour donner de la matière à la recherche et à l'export.
+
+---
+
 ## 13. Base de données — exploitation
 
 ### 13.1 Dimensionnement réel

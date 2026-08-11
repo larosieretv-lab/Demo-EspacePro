@@ -2098,7 +2098,8 @@
       ["Contrôle d'accès", "Page vide au lieu d'une redirection", "Filtré à la source, par organisation"],
       ["Coller son mot de passe", "Bloqué", "Autorisé"],
       ["Mesure d'audience", "Chargée avant le consentement", "Rien avant accord explicite"],
-      ["Journal d'audit", "Aucun", "Chaque action sensible tracée"]
+      ["Journal d'audit", "Aucun", "Chaque action sensible tracée"],
+      ["Validation des formulaires", "Dans le navigateur seulement", "Même schéma, revalidé côté serveur"]
     ];
     return `
       <div class="head"><div>
@@ -2108,7 +2109,10 @@
       <div class="tablewrap"><table class="cmp">
         <thead><tr><th scope="col">Point</th><th scope="col">TignesPro aujourd'hui</th><th scope="col">Espace La Rosière</th></tr></thead>
         <tbody>${lines.map(l => `<tr><td>${esc(l[0])}</td><td class="was">${esc(l[1])}</td><td class="now">${esc(l[2])}</td></tr>`).join("")}</tbody>
-      </table></div>`;
+      </table></div>
+      <div class="msg" style="margin-top:26px"><strong>Une colonne manque à ce tableau : comment le vérifier.</strong> Elle a son propre écran, où sept des treize lignes portent un bouton qui ouvre la preuve dans cette maquette.
+        <div class="flexrow" style="margin-top:13px"><button class="btn btn-2 btn-s" data-go="recette">Ouvrir l'écran de recette</button></div>
+      </div>`;
   };
 
   // ------------------------------------------------------------- exports
