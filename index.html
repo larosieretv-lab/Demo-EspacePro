@@ -395,6 +395,7 @@
     </div>
     <button type="button" class="lnk" data-go="siret">Vérification SIRET</button>
     <button type="button" class="lnk" data-go="traceurs">Traceurs</button>
+    <button type="button" class="lnk" data-go="recette">Recette</button>
     <button type="button" class="lnk" data-go="compare">Ce qui change</button>
   </div>
 </div>
@@ -595,7 +596,7 @@
   const ACCESS = {
     accueil: "public", connexion: "public", compare: "public", siret: "public",
     inscription: "public", verif: "public", invitation: "public", traceurs: "public",
-    oubli: "public", mfa: "public",
+    oubli: "public", mfa: "public", recette: "public",
     "logement-nouveau": "owner",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
     "ot-file": "ot", "ot-proprios": "ot", "ot-proprio": "ot", "ot-journal": "ot"
@@ -1914,6 +1915,96 @@
     if (state.view === "traceurs") draw();
   }
 
+  // ------------------------------------------------------------- recette
+  // Le §8 du plan, rendu parcourable. « ici » = vérifiable dans cette maquette,
+  // « recette » = vérifiable sur l'environnement de recette, pas avant.
+  const RECETTE = [
+    { titre: "Aucun jeton anti-CSRF", traitement: "Server Actions de Next.js, plus un cookie de session en SameSite=Lax.",
+      verif: "Rejouer une soumission de formulaire depuis un autre domaine : elle doit être rejetée.", ou: "recette" },
+    { titre: "Ni limite de tentatives, ni CAPTCHA", traitement: "Cinq essais par quart d'heure, par compte et par adresse IP, plus Turnstile sur l'inscription et la réinitialisation.",
+      verif: "Se tromper cinq fois de mot de passe : la sixième tentative est refusée, et le bon mot de passe l'est aussi.", ou: "connexion", quoi: "Essayer sur l'écran de connexion" },
+    { titre: "Cookies d'identité maison", traitement: "Session côté serveur, jeton haché en base, renouvelé à chaque connexion, révocable.",
+      verif: "Se déconnecter, puis rejouer le cookie capturé avant : il doit être refusé.", ou: "recette" },
+    { titre: "Aucune politique de contenu", traitement: "CSP stricte avec nonce, HSTS avec includeSubDomains et preload.",
+      verif: "Lire les en-têtes de réponse, ou passer l'URL sur observatory.mozilla.org.", ou: "recette" },
+    { titre: "HTML injecté dans la page par jQuery", traitement: "React, échappement par défaut, aucun HTML construit à la main.",
+      // la barre oblique est échappée : sinon le navigateur fermerait ce bloc de script ici même
+      verif: "Déclarer un logement nommé <script>alert(1)<\/script> : le nom s'affiche tel quel, en toutes lettres, sans rien exécuter.", ou: "logement-nouveau", quoi: "Essayer, le nom est libre" },
+    { titre: "HTTP répond 200 sans rediriger", traitement: "Redirection permanente vers HTTPS, HSTS préchargé.",
+      verif: "curl -I sur l'adresse en http : doit renvoyer un 301.", ou: "recette" },
+    { titre: "Bibliothèques servies par un CDN sans contrôle d'intégrité", traitement: "Aucun CDN. Tout est embarqué et versionné dans le dépôt.",
+      verif: "Ouvrir l'onglet réseau : aucun domaine tiers. L'écran Traceurs compte les requêtes lui-même.", ou: "traceurs", quoi: "Voir le compteur" },
+    { titre: "Aucune authentification à deux facteurs", traitement: "TOTP obligatoire pour les comptes de l'office, sans contournement.",
+      verif: "Ouvrir une session d'agent : le code à six chiffres est exigé avant le premier écran.", ou: "mfa", quoi: "Ouvrir une session d'agent" },
+    { titre: "Dépendances figées en 2016", traitement: "Verrou de versions, Dependabot, et une intégration continue qui casse sur vulnérabilité haute.",
+      verif: "Lire le journal de la CI et le fichier de verrou dans le dépôt.", ou: "recette" },
+    { titre: "Collage interdit dans le champ mot de passe", traitement: "Collage autorisé, sans limite de longueur.",
+      verif: "Coller un mot de passe long depuis un gestionnaire : il entre.", ou: "connexion", quoi: "Essayer le champ" },
+    { titre: "Google Analytics chargé avant le consentement", traitement: "Aucun traceur avant accord explicite. Refuser et retirer coûtent un clic, comme accepter.",
+      verif: "Regarder l'onglet réseau avant de toucher au bandeau, puis retirer son accord depuis l'écran Traceurs.", ou: "traceurs", quoi: "Voir l'écran Traceurs" },
+    { titre: "Contrôle d'accès tardif : page vide avec un code 200", traitement: "Middleware avant tout chargement de données, et 401 distingué de 403.",
+      verif: "Demander une page de l'office avec un compte propriétaire : refus explicite, pas une page blanche.", ou: "refus-essai", quoi: "Tenter l'accès interdit" },
+    { titre: "Validation dans le navigateur seulement", traitement: "Schémas Zod partagés, revalidés côté serveur à chaque appel.",
+      verif: "Envoyer une requête hors formulaire avec des données invalides : rejetée.", ou: "recette" }
+  ];
+
+  const RECETTE_PLUS = [
+    ["Cloisonnement entre propriétaires", "Un test automatisé par route, en intégration continue : le propriétaire A ne lit jamais une donnée de B. C'est le test qui ne doit jamais devenir rouge."],
+    ["Journal d'audit", "Connexion, échec, accès refusé, dépôt, validation, refus, invitation, retrait de copropriétaire. Conservé après suppression de compte, mais anonymisé.", "ot-journal"],
+    ["Revue OWASP ASVS niveau 2", "Passée sur les points ci-dessus avant la mise en ligne, et le rapport remis avec le lot."]
+  ];
+
+  V.recette = () => {
+    const ici = RECETTE.filter(r => r.ou !== "recette").length;
+    return `
+      <div class="head"><div>
+        <h1>Recette</h1>
+        <p class="lede">Les treize constats relevés sur TignesPro deviennent des critères de réception. Chaque ligne se vérifie — par vous, ou par un tiers que vous mandatez. Ce n'est pas une liste d'intentions.</p>
+      </div></div>
+
+      <div class="figures">
+        <div><div class="val num">13</div><div class="cap"><b>constats</b> traités, aucun laissé de côté</div></div>
+        <div><div class="val num">${ici}</div><div class="cap"><b>vérifiables ici</b>, dans cette maquette, tout de suite</div></div>
+        <div><div class="val num">${13 - ici}</div><div class="cap"><b>vérifiables en recette</b> : ils demandent un serveur, que la maquette n'a pas</div></div>
+      </div>
+
+      <div class="section">
+        <div class="bar"><h2>Les treize constats</h2><span class="count">audit du 4 août 2026</span></div>
+        <div class="rows" style="margin-top:2px">
+          ${RECETTE.map(r => `
+            <div class="row" style="align-items:flex-start;gap:18px">
+              <div class="grow">
+                <div class="title">${esc(r.titre)}</div>
+                <div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5;margin-top:3px">${esc(r.traitement)}</div>
+                <div class="sub" style="font-size:13px;line-height:1.5;margin-top:6px"><strong style="font-weight:500;color:var(--ink-2)">Comment le vérifier —</strong> ${esc(r.verif)}</div>
+              </div>
+              <div style="flex:none;text-align:right;min-width:150px">
+                ${r.ou === "recette"
+                  ? `<span class="tag t-idle">En recette</span>`
+                  : `<span class="tag t-ok" style="display:block;margin-bottom:8px">Vérifiable ici</span>
+                     <button class="btn btn-2 btn-s" data-recette="${r.ou}">${esc(r.quoi || "Voir l'écran")}</button>`}
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="bar"><h2>Ce qui va au-delà de l'audit</h2><span class="count">3</span></div>
+        <div class="rows" style="margin-top:2px">
+          ${RECETTE_PLUS.map(([t, d, go]) => `
+            <div class="row" style="align-items:flex-start;gap:18px">
+              <div class="grow">
+                <div class="title">${esc(t)}</div>
+                <div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5;margin-top:3px">${esc(d)}</div>
+              </div>
+              ${go ? `<button class="btn btn-2 btn-s" style="flex:none" data-recette="${go}">Voir le journal</button>` : ""}
+            </div>`).join("")}
+        </div>
+      </div>
+
+      <div class="msg" style="margin-top:34px"><strong>Ce que cette page ne prétend pas.</strong> Aucun test intrusif n'a été mené sur TignesPro : les constats portent sur des défenses absentes, observables de l'extérieur, pas sur des failles exploitées. Et les six lignes vérifiables ici le sont dans une maquette sans serveur — elles montrent le comportement voulu, elles ne remplacent pas la recette sur l'environnement de recette.</div>`;
+  };
+
   V.compare = () => {
     const lines = [
       ["Jeton anti-CSRF", "Absent de tous les formulaires", "Natif, plus SameSite=Lax"],
@@ -2312,7 +2403,7 @@
       return siretOut();
     }
 
-    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill],[data-otfiche],[data-otfiltre],[data-csv]");
+    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill],[data-otfiche],[data-otfiltre],[data-csv],[data-recette]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
     const d = t.dataset;
@@ -2410,6 +2501,21 @@
       return draw();
     }
     if (d.revCancel) { state.review = null; return draw(); }
+    // les boutons de l'écran de recette ouvrent la démonstration, en prenant la session qu'il faut
+    if (d.recette) {
+      const v = d.recette;
+      if (v === "refus-essai") {
+        if (state.auth !== "owner") finishSignIn("owner");
+        return go("ot-file");                      // propriétaire visant l'espace de l'office
+      }
+      if (v === "mfa" || v === "ot-journal") {
+        if (state.auth === "ot") return go(v === "mfa" ? "ot-file" : v);
+        if (v === "ot-journal") state.blocked = v;  // on y revient après le second facteur
+        return signIn("ot");
+      }
+      if (v === "logement-nouveau" && state.auth !== "owner") finishSignIn("owner");
+      return go(v);
+    }
     if (d.otfiche) { state.otId = d.otfiche; return go("ot-proprio"); }
     if (d.otfiltre) { state.ot.filtre = d.otfiltre; return draw(); }
     if (d.csv) return d.csv === "proprios" ? exportProprios() : exportLogements();
