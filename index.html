@@ -484,6 +484,7 @@
     pending: null,
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     consent: { decided: false, audience: false, at: null, open: false },
+    review: null,       // { id, i } : la pièce dont l'agent est en train de motiver le refus
     sec: { fails: 0, lockUntil: null },
     mfa: { awaiting: null, code: null, tries: 0 },
     reset: { sent: false, mail: "" },
@@ -498,6 +499,16 @@
   const DOC_TAG  = { VALIDATED: "t-ok", PENDING: "t-wait", REJECTED: "t-stop", MISSING: "t-idle" };
   const LGT_TXT  = { VALIDATED: "Validé", SUBMITTED: "À l'instruction", REJECTED: "À corriger", DRAFT: "Brouillon" };
   const LGT_TAG  = { VALIDATED: "t-ok", SUBMITTED: "t-wait", REJECTED: "t-stop", DRAFT: "t-idle" };
+
+  // Les motifs de refus les plus courants au guichet. Un refus sans motif est un appel
+  // téléphonique la semaine suivante, alors le motif est obligatoire côté agent.
+  const MOTIFS = [
+    "Le document est illisible ou tronqué",
+    "Le document est expiré",
+    "Le nom du document ne correspond pas au propriétaire déclaré",
+    "L'adresse du document ne correspond pas au logement déclaré",
+    "Ce n'est pas la pièce demandée"
+  ];
 
   const lgt = id => state.lgts.find(l => l.id === id) || state.lgts[0];
   const beds = () => state.lgts.reduce((a, l) => a + l.beds, 0);
@@ -1087,7 +1098,10 @@
         ? `<button class="btn btn-2 btn-s" data-up="${l.id}:${i}">${d.status === "MISSING" ? "Déposer" : "Remplacer"}</button>`
         : `<span class="sub">${d.until ? "valable jusqu'au " + d.until : ""}</span>`;
       return `<tr>
-        <td>${esc(d.label)}</td>
+        <td>${esc(d.label)}${d.status === "REJECTED" && d.note
+          ? `<div class="sub" style="color:var(--stop);margin-top:4px;max-width:42ch;line-height:1.45">${esc(d.note)}</div>
+             <div class="sub" style="margin-top:2px">Refusée par ${esc(d.reviewedBy || "l'office")}${d.reviewedAt ? " le " + esc(d.reviewedAt) : ""}</div>`
+          : ""}</td>
         <td style="color:var(--ink-3)">${d.file ? esc(d.file) : "—"}</td>
         <td><span class="tag ${DOC_TAG[d.status]}">${DOC_TXT[d.status]}</span></td>
         <td style="text-align:right">${act}</td>
@@ -1104,7 +1118,13 @@
         <span class="tag ${LGT_TAG[l.status]}" style="font-size:13px;padding:4px 11px">${LGT_TXT[l.status]}</span>
       </div>
 
-      ${l.status === "REJECTED" ? `<div class="msg stop" style="margin-bottom:26px"><strong>Dossier à corriger.</strong> Le numéro d'enregistrement ne correspond pas à l'adresse déclarée. Corrigez-le, puis renvoyez le dossier à l'office.</div>` : ""}
+      ${l.status === "REJECTED" ? (() => {
+        const refus = l.docs.filter(d => d.status === "REJECTED");
+        return `<div class="msg stop" style="margin-bottom:26px">
+          <strong>Dossier à corriger.</strong> ${refus.length === 1 ? "Une pièce a été refusée" : refus.length + " pièces ont été refusées"}, avec le motif de l'office. Remplacez-la${refus.length > 1 ? "s" : ""} : le dossier repart tout seul à l'instruction, sans nouvelle démarche de votre part.
+          <ul style="margin:10px 0 0;padding-left:20px">${refus.map(d => `<li style="margin-top:4px"><strong>${esc(d.label)}</strong> — ${esc(d.note || "motif non renseigné")}</li>`).join("")}</ul>
+        </div>`;
+      })() : ""}
 
       <div class="cols">
         <div>
@@ -1236,16 +1256,50 @@
 
   V["ot-file"] = () => {
     const q = queue();
-    const rows = q.map(({ l, d, i }) => `
+    const rows = q.map(({ l, d, i }) => {
+      const enCours = state.review && state.review.id === l.id && state.review.i === i;
+      const ligne = `
       <tr>
         <td><span style="font-weight:500;color:var(--ink)">${esc(l.name)}</span><br><span class="sub num">${l.id} · ${esc(l.sector)}</span></td>
         <td>${esc(d.label)}</td>
         <td style="color:var(--ink-3)">${esc(d.file)}</td>
         <td style="text-align:right;white-space:nowrap">
           <button class="btn btn-ok btn-s" data-rev="${l.id}:${i}:ok">Valider</button>
-          <button class="btn btn-no btn-s" data-rev="${l.id}:${i}:no" style="margin-left:6px">Refuser</button>
+          <button class="btn btn-no btn-s" data-rev="${l.id}:${i}:no" style="margin-left:6px"${enCours ? " disabled" : ""}>Refuser</button>
         </td>
-      </tr>`).join("");
+      </tr>`;
+      if (!enCours) return ligne;
+      return ligne + `
+      <tr><td colspan="4" style="padding:0 0 18px">
+        <form class="panel stack" style="gap:14px" id="form-motif">
+          <div>
+            <div style="font-weight:500;color:var(--ink)">Pourquoi ce refus ?</div>
+            <p class="small" style="margin-top:3px">Le propriétaire lira ce motif tel quel dans son espace, et le recevra par e-mail. Un refus muet, c'est un appel au secrétariat la semaine suivante.</p>
+          </div>
+          <fieldset class="stack" style="border:0;padding:0;margin:0;gap:9px">
+            <legend class="small" style="padding:0 0 4px">Motif</legend>
+            ${MOTIFS.map((m, k) => `
+              <label class="flexrow" style="gap:9px;font-size:14.5px;align-items:flex-start">
+                <input type="radio" name="motif" value="${esc(m)}"${k === 0 ? " checked" : ""} style="margin-top:4px">
+                <span>${esc(m)}</span>
+              </label>`).join("")}
+            <label class="flexrow" style="gap:9px;font-size:14.5px;align-items:flex-start">
+              <input type="radio" name="motif" value="" style="margin-top:4px">
+              <span>Autre motif, que je précise ci-dessous</span>
+            </label>
+          </fieldset>
+          <div class="stack" style="gap:6px">
+            <label for="motif-libre" class="small">Précision (facultative, sauf pour « autre motif »)</label>
+            <textarea id="motif-libre" rows="2" placeholder="Ce que le propriétaire doit corriger, en une phrase."
+              style="font-family:var(--sans);font-size:14.5px;padding:9px 11px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%;resize:vertical"></textarea>
+          </div>
+          <div class="flexrow">
+            <button type="submit" class="btn btn-no btn-s">Refuser avec ce motif</button>
+            <button type="button" class="btn btn-2 btn-s" data-rev-cancel="1">Annuler</button>
+          </div>
+        </form>
+      </td></tr>`;
+    }).join("");
 
     const adh = state.adhesion.status === "SUBMITTED" ? `
       <div class="section">
@@ -1933,6 +1987,27 @@
       return signIn("owner");
     }
 
+    if (f.id === "form-motif") {
+      const r = state.review;
+      if (!r) return draw();
+      const l = lgt(r.id), doc = l.docs[r.i];
+      const choisi = (f.querySelector('input[name="motif"]:checked') || {}).value || "";
+      const libre = document.getElementById("motif-libre").value.trim();
+      if (!choisi && !libre) {
+        toast("Un refus sans motif n'est pas transmissible. Précisez-le.");
+        return;
+      }
+      doc.status = "REJECTED";
+      doc.note = choisi && libre ? `${choisi} — ${libre}` : (choisi || libre);
+      doc.reviewedBy = state.agent.name;
+      doc.reviewedAt = stamp();
+      l.status = "REJECTED";
+      state.review = null;
+      note("Pièce refusée", `${l.id} · ${doc.label} — ${doc.note}`);
+      toast("Refusée. Le propriétaire lit le motif, pas seulement le verdict.");
+      return draw();
+    }
+
     if (f.id === "form-oubli") {
       const mail = document.getElementById("o-mail").value.trim();
       state.reset = { sent: true, mail };
@@ -2035,7 +2110,7 @@
       return siretOut();
     }
 
-    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill]");
+    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
     const d = t.dataset;
@@ -2086,10 +2161,14 @@
     if (d.up) {
       const [id, i] = d.up.split(":");
       const l = lgt(id), doc = l.docs[+i];
+      const remplace = doc.status === "REJECTED";
       doc.status = "PENDING";
       doc.file = doc.label.toLowerCase().split(" ")[0].replace(/[^a-z]/g, "") + "-" + l.id.toLowerCase() + ".pdf";
       doc.until = "31/12/2026";
-      note("Pièce déposée", `${l.id} · ${doc.label}`);
+      doc.note = null;                     // le motif tombe avec la pièce qu'il visait
+      // un bien redevient instructible dès qu'il ne reste aucune pièce refusée
+      if (remplace && !l.docs.some(x => x.status === "REJECTED")) l.status = "SUBMITTED";
+      note("Pièce déposée", `${l.id} · ${doc.label}${remplace ? " (remplacement après refus)" : ""}`);
       toast("Pièce déposée. Elle part dans la file de l'office.");
       return draw();
     }
@@ -2122,14 +2201,13 @@
           l.status = "VALIDATED";
           note("Bien validé", `${l.id} · dossier complet`);
         }
+        state.review = null;
       } else {
-        doc.status = "REJECTED";
-        l.status = "REJECTED";
-        note("Pièce refusée", `${l.id} · ${doc.label}, motif transmis`);
-        toast("Refusée avec motif. Le propriétaire reçoit l'explication.");
+        state.review = { id, i: +i };      // le refus passe par la saisie du motif
       }
       return draw();
     }
+    if (d.revCancel) { state.review = null; return draw(); }
 
     if (d.cgu) {
       state.adhesion.cgu = true;
