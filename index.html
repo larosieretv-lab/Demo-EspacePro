@@ -485,6 +485,39 @@
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     consent: { decided: false, audience: false, at: null, open: false },
     review: null,       // { id, i } : la pièce dont l'agent est en train de motiver le refus
+    ot: { q: "", filtre: "tous" },
+    otId: null,
+    // Annuaire de démonstration : ces propriétaires n'existent pas. Ils sont là pour que
+    // la recherche, les filtres et l'export aient de quoi mordre.
+    annuaire: [
+      { first: "Michel", last: "Berthod", email: "m.berthod@example.fr", phone: "06 22 41 07 93",
+        town: "Montvalezan", kind: "Particulier", since: "2019", adh: "VALIDATED",
+        lgtsList: [{ name: "Chalet du Riondet", sector: "La Rosière 1850", beds: 6, status: "VALIDATED" }] },
+      { first: "Sylvie", last: "Empereur", email: "s.empereur@example.fr", phone: "06 71 55 82 14",
+        town: "Séez", kind: "Particulier", since: "2021", adh: "VALIDATED",
+        lgtsList: [{ name: "Appartement Les Cristaux", sector: "Les Eucherts", beds: 4, status: "VALIDATED" },
+                   { name: "Studio Les Cristaux", sector: "Les Eucherts", beds: 2, status: "VALIDATED" }] },
+      { first: "Jean-Paul", last: "Vulliez", email: "jp.vulliez@example.fr", phone: "06 09 34 66 20",
+        town: "Bourg-Saint-Maurice", kind: "Particulier", since: "2017", adh: "SUBMITTED",
+        lgtsList: [{ name: "Chalet La Traverse", sector: "La Rosière 1850", beds: 10, status: "SUBMITTED" }] },
+      { first: "Hélène", last: "Marmottan", email: "h.marmottan@example.fr", phone: "07 60 12 45 88",
+        town: "Chambéry", kind: "Particulier", since: "2024", adh: "SUBMITTED",
+        lgtsList: [{ name: "Appartement Le Vernay", sector: "Les Eucherts", beds: 4, status: "REJECTED" }] },
+      { first: "Didier", last: "Gonthier", email: "contact@sci-les-arolles.fr", phone: "04 79 41 22 60",
+        town: "Albertville", kind: "SCI Les Arolles", since: "2015", adh: "VALIDATED",
+        lgtsList: [{ name: "Résidence Les Arolles A", sector: "La Rosière 1850", beds: 8, status: "VALIDATED" },
+                   { name: "Résidence Les Arolles B", sector: "La Rosière 1850", beds: 8, status: "VALIDATED" },
+                   { name: "Résidence Les Arolles C", sector: "La Rosière 1850", beds: 6, status: "SUBMITTED" }] },
+      { first: "Nathalie", last: "Bozon", email: "n.bozon@example.fr", phone: "06 84 90 31 07",
+        town: "Lyon", kind: "Particulier", since: "2026", adh: "DRAFT",
+        lgtsList: [{ name: "Studio Le Fort", sector: "Les Eucherts", beds: 2, status: "DRAFT" }] },
+      { first: "Patrick", last: "Chevallier", email: "p.chevallier@example.fr", phone: "06 15 73 28 41",
+        town: "Montvalezan", kind: "Particulier", since: "2013", adh: "DRAFT",
+        lgtsList: [{ name: "Ferme des Moulins", sector: "Montvalezan village", beds: 12, status: "DRAFT" }] },
+      { first: "Anne-Marie", last: "Perrier", email: "am.perrier@example.fr", phone: "06 47 19 55 62",
+        town: "Genève", kind: "Particulier", since: "2022", adh: "VALIDATED",
+        lgtsList: [{ name: "Chalet Belle Vue", sector: "La Rosière 1850", beds: 8, status: "VALIDATED" }] }
+    ],
     sec: { fails: 0, lockUntil: null },
     mfa: { awaiting: null, code: null, tries: 0 },
     reset: { sent: false, mail: "" },
@@ -565,7 +598,7 @@
     oubli: "public", mfa: "public",
     "logement-nouveau": "owner",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
-    "ot-file": "ot", "ot-proprios": "ot", "ot-journal": "ot"
+    "ot-file": "ot", "ot-proprios": "ot", "ot-proprio": "ot", "ot-journal": "ot"
   };
   const allowed = view => {
     const need = ACCESS[view] || "public";
@@ -589,7 +622,9 @@
       let badge = "";
       if (t.id === "tdb") { const n = chores().length; if (n) badge = `<span class="badge num">${n}</span>`; }
       if (t.id === "ot-file") { const n = queue().length; if (n) badge = `<span class="badge num">${n}</span>`; }
-      const on = state.view === t.id || (t.id === "logements" && state.view === "logement");
+      const on = state.view === t.id
+        || (t.id === "logements" && state.view === "logement")
+        || (t.id === "ot-proprios" && state.view === "ot-proprio");
       return `<button type="button" data-go="${t.id}"${on ? ' aria-current="page"' : ""}>${t.label}${badge}</button>`;
     }).join("");
 
@@ -1330,30 +1365,148 @@
       ${adh}`;
   };
 
+  // ------------------------------------------------- annuaire de l'office
+  const ADH_TXT = { DRAFT: "À préparer", SUBMITTED: "Envoyée", VALIDATED: "Validée" };
+  const ADH_TAG = { DRAFT: "t-idle", SUBMITTED: "t-wait", VALIDATED: "t-ok" };
+  const plat = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+  // le dossier réellement manipulé dans cette maquette, présenté comme les autres
+  function ficheVivante() {
+    return {
+      first: state.owner.firstName, last: state.owner.lastName,
+      email: state.owner.email, phone: state.owner.phone,
+      town: state.owner.town, kind: state.owner.kind, since: "2026",
+      adh: state.adhesion.status, vivant: true,
+      lgtsList: state.lgts.map(l => ({ name: l.name, sector: l.sector, beds: l.beds, status: l.status }))
+    };
+  }
+
+  const annuaire = () => [ficheVivante(), ...state.annuaire];
+  const litsDe = p => p.lgtsList.reduce((a, l) => a + l.beds, 0);
+  const fiche = mail => annuaire().find(p => p.email === mail);
+
+  function otListe() {
+    const q = plat(state.ot.q.trim());
+    return annuaire().filter(p => {
+      if (state.ot.filtre !== "tous" && p.adh !== state.ot.filtre) return false;
+      if (!q) return true;
+      return [p.first, p.last, p.email, p.town, p.kind].some(v => plat(v).includes(q))
+          || p.lgtsList.some(l => plat(l.name).includes(q));
+    });
+  }
+
+  function otRows() {
+    const list = otListe();
+    if (!list.length) {
+      return `<tr><td colspan="5" style="color:var(--ink-3);padding:22px 0">Aucun propriétaire ne correspond. La recherche porte sur le nom, l'adresse e-mail, la commune et le nom des biens.</td></tr>`;
+    }
+    return list.map(p => `
+      <tr>
+        <td>
+          <button class="lien-fiche" data-otfiche="${esc(p.email)}" style="background:none;border:0;padding:0;font:inherit;color:var(--ink);font-weight:500;cursor:pointer;text-align:left;text-decoration:underline;text-decoration-color:var(--rule-2);text-underline-offset:3px">${esc(p.last.toUpperCase() + " " + p.first)}</button>
+          ${p.vivant ? `<span class="tag t-info" style="margin-left:8px;font-size:11px">dossier vivant</span>` : ""}
+          <br><span class="sub">${esc(p.email)}</span>
+        </td>
+        <td>${esc(p.town)}</td>
+        <td class="num">${p.lgtsList.length}</td>
+        <td class="num">${litsDe(p)}</td>
+        <td><span class="tag ${ADH_TAG[p.adh]}">${ADH_TXT[p.adh]}</span></td>
+      </tr>`).join("");
+  }
+
   V["ot-proprios"] = () => {
-    const w = { DRAFT: "t-idle", SUBMITTED: "t-wait", VALIDATED: "t-ok" }[state.adhesion.status];
-    const wtxt = { DRAFT: "À préparer", SUBMITTED: "Envoyée", VALIDATED: "Validée" }[state.adhesion.status];
+    const total = annuaire().length;
+    const filtres = [["tous", "Tous"], ["VALIDATED", "Adhésion validée"], ["SUBMITTED", "À instruire"], ["DRAFT", "Non transmise"]];
     return `
       <div class="head">
         <div>
           <h1>Propriétaires</h1>
           <p class="lede">Recherche, filtres, export. La donnée que l'office cherche aujourd'hui dans trois classeurs et deux boîtes mail.</p>
         </div>
-        <button class="btn btn-2" data-toast="Export CSV généré (démonstration).">Exporter en CSV</button>
+        <div class="flexrow">
+          <button class="btn btn-2" data-csv="proprios">Exporter les propriétaires</button>
+          <button class="btn btn-2" data-csv="logements">Exporter les logements</button>
+        </div>
       </div>
+
+      <div class="flexrow" style="gap:12px;margin-bottom:20px">
+        <div class="stack" style="gap:6px;flex:1;min-width:240px">
+          <label for="ot-q" class="small">Rechercher</label>
+          <input id="ot-q" type="search" value="${esc(state.ot.q)}" placeholder="Nom, e-mail, commune, nom d'un bien"
+            style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
+        </div>
+        <div class="stack" style="gap:6px">
+          <span class="small">Adhésion</span>
+          <div class="grp" role="group" aria-label="Filtrer par état d'adhésion" style="display:flex;border:1px solid var(--rule-2);border-radius:var(--r);overflow:hidden">
+            ${filtres.map(([v, lab]) => `
+              <button type="button" data-otfiltre="${v}" aria-pressed="${state.ot.filtre === v}"
+                style="font:inherit;font-size:13px;padding:9px 13px;border:0;cursor:pointer;background:${state.ot.filtre === v ? "var(--plum)" : "transparent"};color:${state.ot.filtre === v ? "#fff" : "var(--ink)"}">${lab}</button>`).join("")}
+          </div>
+        </div>
+      </div>
+
       <div class="tablewrap"><table>
         <thead><tr><th scope="col">Propriétaire</th><th scope="col">Commune</th><th scope="col">Logements</th><th scope="col">Lits</th><th scope="col">Adhésion</th></tr></thead>
-        <tbody>
-          <tr>
-            <td><span style="font-weight:500;color:var(--ink)">${esc(state.owner.lastName.toUpperCase() + " " + state.owner.firstName)}</span><br><span class="sub">${esc(state.owner.email)}</span></td>
-            <td>${esc(state.owner.town)}</td>
-            <td class="num">${state.lgts.length}</td>
-            <td class="num">${beds()}</td>
-            <td><span class="tag ${w}">${wtxt}</span></td>
-          </tr>
-        </tbody>
+        <tbody id="ot-tbody">${otRows()}</tbody>
       </table></div>
-      <p class="small" style="margin-top:18px">Un seul propriétaire dans cette maquette. En production, la reprise du fichier existant se fait par lots de 200 par jour, avec un lien d'activation personnel — ce qui nettoie au passage les adresses mortes.</p>`;
+      <p class="small" style="margin-top:18px">${total} propriétaires, dont un seul dossier vivant : les autres sont fictifs et servent à démontrer la recherche et l'export. En production, la reprise du fichier existant se fait par lots de 200 par jour, avec un lien d'activation personnel — ce qui nettoie au passage les adresses mortes.</p>`;
+  };
+
+  V["ot-proprio"] = () => {
+    const p = fiche(state.otId) || ficheVivante();
+    const trace = state.journal.filter(j => j.who === p.email);
+    return `
+      <div class="head">
+        <div>
+          <button class="btn btn-2 btn-s" data-go="ot-proprios" style="margin-bottom:14px">← Tous les propriétaires</button>
+          <h1>${esc(p.last.toUpperCase() + " " + p.first)}</h1>
+          <p class="lede">${esc(p.kind)} · propriétaire depuis ${esc(p.since)} · ${p.lgtsList.length} logement${p.lgtsList.length > 1 ? "s" : ""}, ${litsDe(p)} lits</p>
+        </div>
+        <span class="tag ${ADH_TAG[p.adh]}" style="font-size:13px;padding:4px 11px">Adhésion ${esc(ADH_TXT[p.adh].toLowerCase())}</span>
+      </div>
+
+      <div class="cols">
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Coordonnées</h2></div>
+          <dl class="spec">
+            <dt>Adresse e-mail</dt><dd>${esc(p.email)}</dd>
+            <dt>Téléphone</dt><dd class="num">${esc(p.phone)}</dd>
+            <dt>Commune de résidence</dt><dd>${esc(p.town)}</dd>
+            <dt>Statut</dt><dd>${esc(p.kind)}</dd>
+            <dt>Saison ${esc(state.adhesion.season)}</dt><dd>${esc(ADH_TXT[p.adh])}</dd>
+          </dl>
+          <p class="small" style="margin-top:16px">Une seule fiche, à jour, au lieu d'un fichier de contacts recopié chaque automne. L'agent ne modifie pas les coordonnées : elles appartiennent au propriétaire, qui les tient à jour depuis son espace.</p>
+        </div>
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ses biens</h2></div>
+          <div class="rows">
+            ${p.lgtsList.map(l => `
+              <div class="row">
+                <div class="grow">
+                  <div class="title">${esc(l.name)}</div>
+                  <div class="sub">${esc(l.sector)} · ${l.beds} lits</div>
+                </div>
+                <span class="tag ${LGT_TAG[l.status]}">${LGT_TXT[l.status]}</span>
+              </div>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="bar"><h2>Ce que cette personne a fait</h2><span class="count">${trace.length}</span></div>
+        ${trace.length
+          ? `<div class="tablewrap" style="margin-top:18px"><table>
+              <thead><tr><th scope="col">Horodatage</th><th scope="col">Action</th><th scope="col">Détail</th></tr></thead>
+              <tbody>${trace.map(j => `
+                <tr>
+                  <td class="num" style="color:var(--ink-3);white-space:nowrap">${esc(j.at)}</td>
+                  <td><span class="tag t-info">${esc(j.act)}</span></td>
+                  <td style="color:var(--ink-2)">${esc(j.detail)}</td>
+                </tr>`).join("")}</tbody>
+            </table></div>`
+          : `<div class="msg" style="margin-top:18px"><strong>Rien au journal pour ce compte.</strong> ${p.vivant ? "Agissez depuis l'espace propriétaire, et les lignes apparaîtront ici." : "Ce propriétaire est fictif : seul le dossier vivant de la maquette produit des traces."}</div>`}
+        <p class="small" style="margin-top:16px">Le journal est filtré sur le compte, pas recopié : c'est la même source que l'onglet Journal, vue par le petit bout. Le jour d'une contestation, c'est cet écran qu'on ouvre.</p>
+      </div>`;
   };
 
   V["ot-journal"] = () => `
@@ -1787,6 +1940,48 @@
       </table></div>`;
   };
 
+  // ------------------------------------------------------------- exports
+  // Point-virgule et BOM UTF-8 : c'est ce qu'attend Excel en français. Sans le BOM,
+  // « Bourg-Saint-Maurice » s'ouvre en « Bourg-Saint-Maurice » et l'agent renonce.
+  function csv(lignes) {
+    const cell = v => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+    return "﻿" + lignes.map(l => l.map(cell).join(";")).join("\r\n");
+  }
+
+  function telecharger(nom, texte) {
+    const url = URL.createObjectURL(new Blob([texte], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nom;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  const jour = () => {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  function exportProprios() {
+    const list = otListe();
+    const lignes = [["Nom", "Prénom", "Adresse e-mail", "Téléphone", "Commune", "Statut", "Propriétaire depuis", "Logements", "Lits", `Adhésion ${state.adhesion.season}`]];
+    list.forEach(p => lignes.push([p.last, p.first, p.email, p.phone, p.town, p.kind, p.since, p.lgtsList.length, litsDe(p), ADH_TXT[p.adh]]));
+    telecharger(`proprietaires-larosiere-${jour()}.csv`, csv(lignes));
+    note("Export CSV", `propriétaires · ${list.length} lignes${state.ot.q || state.ot.filtre !== "tous" ? " (sélection filtrée)" : ""}`);
+    toast(`${list.length} lignes exportées. L'export suit la recherche et le filtre affichés.`);
+  }
+
+  function exportLogements() {
+    const lignes = [["Propriétaire", "Adresse e-mail", "Logement", "Secteur", "Lits", "État du dossier"]];
+    otListe().forEach(p => p.lgtsList.forEach(l =>
+      lignes.push([`${p.last} ${p.first}`, p.email, l.name, l.sector, l.beds, LGT_TXT[l.status]])));
+    telecharger(`logements-larosiere-${jour()}.csv`, csv(lignes));
+    note("Export CSV", `logements · ${lignes.length - 1} lignes`);
+    toast(`${lignes.length - 1} logements exportés.`);
+  }
+
   // ------------------------------------------------------------- moteur
   function toast(msg) {
     const box = document.getElementById("toasts");
@@ -1925,6 +2120,13 @@
   });
 
   document.addEventListener("input", e => {
+    // on ne redessine que le corps du tableau : sinon le champ perd le focus à chaque frappe
+    if (e.target.id === "ot-q") {
+      state.ot.q = e.target.value;
+      const body = document.getElementById("ot-tbody");
+      if (body) body.innerHTML = otRows();
+      return;
+    }
     if (e.target.id === "s-pwd") {
       const m = document.getElementById("s-pwd-meter");
       if (m) m.innerHTML = pwdMeter(e.target.value);
@@ -2110,7 +2312,7 @@
       return siretOut();
     }
 
-    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill]");
+    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill],[data-otfiche],[data-otfiltre],[data-csv]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
     const d = t.dataset;
@@ -2208,6 +2410,9 @@
       return draw();
     }
     if (d.revCancel) { state.review = null; return draw(); }
+    if (d.otfiche) { state.otId = d.otfiche; return go("ot-proprio"); }
+    if (d.otfiltre) { state.ot.filtre = d.otfiltre; return draw(); }
+    if (d.csv) return d.csv === "proprios" ? exportProprios() : exportLogements();
 
     if (d.cgu) {
       state.adhesion.cgu = true;
