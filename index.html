@@ -379,6 +379,38 @@
     body.consent-on { padding-bottom: 300px; }
   }
 
+  /* --------------------------------------------------------- impression */
+  /* Un écran de recette imprimé sert en réunion. Sans ces règles, on sort huit
+     pages de fonds prune et de boutons morts. */
+  @media print {
+    :root {
+      --paper: #fff; --paper-2: #fff; --paper-3: #fff;
+      --rule: #ccc; --rule-2: #999;
+      --ink: #000; --ink-2: #333; --ink-3: #555; --plum-text: #000;
+      --ok: #0a5a43; --wait: #6b5400; --stop: #99101f; --info: #0f5c72;
+      --ok-bg: #fff; --wait-bg: #fff; --stop-bg: #fff; --info-bg: #fff;
+    }
+    .notice, .consent, .toasts, .tabs, .whoami, .skip, .masthead .ridge { display: none !important; }
+    .masthead { background: #fff !important; border-bottom: 2px solid #000; padding: 0; }
+    .masthead .inner { padding: 0 0 10px; }
+    .masthead .wordmark .l1, .masthead .wordmark .l2 { color: #000 !important; }
+    body { background: #fff; font-size: 11pt; padding-bottom: 0 !important; }
+    main { padding: 0 !important; max-width: none; }
+    .btn, button { display: none !important; }
+    .tag { border: 1px solid currentColor; }
+    .panel { border: 1px solid #999; }
+    .msg { border: 1px solid #999; border-left-width: 3px; }
+    .row, .section, .figures > div, tr { break-inside: avoid; page-break-inside: avoid; }
+    h1 { font-size: 20pt; }
+    .section { margin-top: 26px; }
+    a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 9pt; color: #555; }
+    /* la provenance, sur chaque page imprimée */
+    footer.pied::after {
+      content: "Maquette de démonstration — données fictives, aucun e-mail envoyé, aucune donnée conservée.";
+      display: block; margin-top: 8px; font-size: 9pt; color: #000;
+    }
+  }
+
   @media (max-width: 900px) {
     .cols, .cols3 { grid-template-columns: 1fr; gap: 30px; }
     .figures > div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); }
