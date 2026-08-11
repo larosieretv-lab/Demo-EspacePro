@@ -453,7 +453,7 @@
         reg: "73153 000 123 4Z", status: "VALIDATED",
         docs: [
           { label: "Classement meublé de tourisme", file: "classement-meleze-2025.pdf", status: "VALIDATED", until: "31/03/2030" },
-          { label: "Attestation d'assurance", file: "assurance-meleze-2026.pdf", status: "VALIDATED", until: "31/12/2026" },
+          { label: "Attestation d'assurance", file: "assurance-meleze-2026.pdf", status: "VALIDATED", until: "30/09/2026" },
           { label: "Diagnostic de performance énergétique", file: "dpe-meleze.pdf", status: "VALIDATED", until: "12/07/2033" }
         ]
       },
@@ -560,6 +560,39 @@
     return Math.round((done / total) * 100);
   }
 
+  // ------------------------------------------------------------ échéances
+  // Une attestation d'assurance vaut un an. Si personne ne surveille sa date, l'office
+  // s'en aperçoit en février, au pire moment. On la surveille donc à la place du propriétaire.
+  const OUVERTURE = "12/12/2026";                  // ouverture de la saison d'hiver
+
+  function versDate(fr) {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(fr || ""));
+    return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+  }
+
+  function joursAvant(fr) {
+    const d = versDate(fr);
+    if (!d) return null;
+    return Math.round((d - new Date()) / 86400000);
+  }
+
+  const enJours = n => n < 0 ? `expirée depuis ${-n} jour${-n > 1 ? "s" : ""}`
+    : n === 0 ? "expire aujourd'hui"
+    : n < 62 ? `expire dans ${n} jours`
+    : `valable jusqu'au`;
+
+  // les pièces qui ne tiendront pas jusqu'à l'ouverture de la saison
+  function echeances() {
+    const limite = joursAvant(OUVERTURE);
+    const out = [];
+    state.lgts.forEach(l => l.docs.forEach((d, i) => {
+      const n = joursAvant(d.until);
+      if (n === null || d.status === "MISSING") return;
+      if (n <= limite) out.push({ l, d, i, jours: n });
+    }));
+    return out.sort((a, b) => a.jours - b.jours);
+  }
+
   function chores() {
     const out = [];
     state.lgts.forEach(l => {
@@ -568,6 +601,12 @@
       if (!l.reg && l.status !== "VALIDATED") out.push({ txt: `${l.name} — numéro d'enregistrement en mairie à saisir`, go: "logement", id: l.id, hard: false });
       const no = l.docs.filter(d => d.status === "REJECTED").length;
       if (no) out.push({ txt: `${l.name} — ${no} pièce refusée, à remplacer`, go: "logement", id: l.id, hard: true });
+    });
+    echeances().forEach(({ l, d, jours }) => {
+      out.push({
+        txt: `${l.name} — ${d.label.toLowerCase()} ${jours < 0 ? "a expiré le" : "expire le"} ${d.until}, avant l'ouverture de la saison`,
+        go: "logement", id: l.id, hard: jours < 0
+      });
     });
     if (!state.adhesion.cgu) out.push({ txt: `Conditions générales ${state.adhesion.season} à accepter`, go: "adhesion", hard: false });
     return out;
@@ -1130,14 +1169,19 @@
     const ready = l.status === "DRAFT" && l.docs.every(d => d.status !== "MISSING") && !!l.reg;
 
     const docRows = l.docs.map((d, i) => {
-      const act = (d.status === "MISSING" || d.status === "REJECTED")
-        ? `<button class="btn btn-2 btn-s" data-up="${l.id}:${i}">${d.status === "MISSING" ? "Déposer" : "Remplacer"}</button>`
+      const n = joursAvant(d.until);
+      const urgent = n !== null && n <= joursAvant(OUVERTURE);
+      const act = (d.status === "MISSING" || d.status === "REJECTED" || (urgent && d.status !== "PENDING"))
+        ? `<button class="btn btn-2 btn-s" data-up="${l.id}:${i}">${d.status === "MISSING" ? "Déposer" : urgent && d.status === "VALIDATED" ? "Renouveler" : "Remplacer"}</button>`
         : `<span class="sub">${d.until ? "valable jusqu'au " + d.until : ""}</span>`;
+      const echeance = urgent
+        ? `<div class="sub" style="color:var(--${n < 0 ? "stop" : "wait"});margin-top:4px">${esc(enJours(n))}${n >= 0 ? " — le " + esc(d.until) + ", avant l'ouverture de la saison" : ""}</div>`
+        : "";
       return `<tr>
         <td>${esc(d.label)}${d.status === "REJECTED" && d.note
           ? `<div class="sub" style="color:var(--stop);margin-top:4px;max-width:42ch;line-height:1.45">${esc(d.note)}</div>
              <div class="sub" style="margin-top:2px">Refusée par ${esc(d.reviewedBy || "l'office")}${d.reviewedAt ? " le " + esc(d.reviewedAt) : ""}</div>`
-          : ""}</td>
+          : echeance}</td>
         <td style="color:var(--ink-3)">${d.file ? esc(d.file) : "—"}</td>
         <td><span class="tag ${DOC_TAG[d.status]}">${DOC_TXT[d.status]}</span></td>
         <td style="text-align:right">${act}</td>
@@ -1351,13 +1395,32 @@
         </div>
       </div>` : "";
 
+    const ech = echeances();
+    const echBloc = ech.length ? `
+      <div class="section">
+        <div class="bar"><h2>Expire avant l'ouverture</h2><span class="count">saison au ${OUVERTURE}</span></div>
+        <div class="rows" style="margin-top:2px">
+          ${ech.map(({ l, d, jours }) => `
+            <div class="row">
+              <div class="grow">
+                <div class="title">${esc(l.name)} — ${esc(d.label.toLowerCase())}</div>
+                <div class="sub num">${l.id} · ${esc(d.until)}</div>
+              </div>
+              <span class="tag ${jours < 0 ? "t-stop" : "t-wait"}">${esc(enJours(jours))}</span>
+            </div>`).join("")}
+        </div>
+        <p class="small" style="margin-top:16px">Relance automatique au propriétaire à soixante jours, puis à trente, puis à sept. L'office n'a pas à tenir un tableau des dates d'assurance — et n'a plus à découvrir en février qu'un meublé loué depuis Noël n'est plus couvert.</p>
+      </div>` : "";
+
     return `
       <div class="head"><div>
         <h1>À instruire</h1>
         <p class="lede">Une file d'attente, pas une boîte mail partagée. Chaque décision notifie le propriétaire et s'inscrit au journal.</p>
       </div></div>
 
-      <div class="section" style="margin-top:0">
+      ${echBloc}
+
+      <div class="section"${ech.length ? "" : ' style="margin-top:0"'}>
         <div class="bar"><h2>Pièces en attente</h2><span class="count">${q.length}</span></div>
         ${q.length
           ? `<div class="tablewrap"><table><thead><tr><th scope="col">Logement</th><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col"></th></tr></thead><tbody>${rows}</tbody></table></div>`
