@@ -357,6 +357,21 @@
 
   @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 
+  /* listes à deux colonnes : le détail à gauche, le verdict et les actions à droite */
+  .verdict { flex: none; text-align: right; min-width: 150px; }
+  .verdict.wide { min-width: 300px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+
+  @media (max-width: 620px) {
+    /* sous cette largeur, la colonne de droite réduit le titre à un mot par ligne */
+    .rows.detail .row { flex-wrap: wrap; }
+    .rows.detail .row .grow { flex: 1 1 100%; }
+    .verdict, .verdict.wide {
+      width: 100%; min-width: 0; text-align: left; margin-top: 12px;
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-start;
+    }
+    .verdict .tag { display: inline-block !important; margin: 0 !important; }
+  }
+
   @media (max-width: 760px) {
     .consent .in { padding: 16px 18px 18px; }
     .consent .acts { flex: 1 1 100%; }
@@ -1092,7 +1107,7 @@
 
       <div class="section">
         <div class="bar"><h2>Mes logements</h2><span class="count">${state.lgts.length}</span></div>
-        <div class="rows">${state.lgts.map(lgtRow).join("")}</div>
+        <div class="rows detail">${state.lgts.map(lgtRow).join("")}</div>
       </div>`;
   };
 
@@ -1104,12 +1119,14 @@
           <div class="title">${esc(l.name)}</div>
           <div class="sub">${esc(l.sector)} · ${l.beds} lits · ${l.area} m² · ${l.stars ? l.stars + " étoiles" : "non classé"}${coOwnerNote(l)}</div>
         </div>
-        <div style="width:96px">
-          <div class="bar-meter${f === 100 ? " done" : ""}"><i style="width:${f}%"></i></div>
-          <div class="sub num" style="text-align:right;margin-top:5px">${f} %</div>
+        <div class="verdict wide">
+          <div style="width:96px;flex:none">
+            <div class="bar-meter${f === 100 ? " done" : ""}"><i style="width:${f}%"></i></div>
+            <div class="sub num" style="text-align:right;margin-top:5px">${f} %</div>
+          </div>
+          <span class="tag ${LGT_TAG[l.status]}">${LGT_TXT[l.status]}</span>
+          <button class="btn btn-2 btn-s" data-go="logement" data-id="${l.id}">Ouvrir</button>
         </div>
-        <span class="tag ${LGT_TAG[l.status]}">${LGT_TXT[l.status]}</span>
-        <button class="btn btn-2 btn-s" data-go="logement" data-id="${l.id}">Ouvrir</button>
       </div>`;
   }
 
@@ -1161,7 +1178,7 @@
       </div>
       <button class="btn btn-1" data-go="logement-nouveau">Déclarer un logement</button>
     </div>
-    <div class="rows" style="border-top:2px solid var(--ink)">${state.lgts.map(lgtRow).join("")}</div>`;
+    <div class="rows detail" style="border-top:2px solid var(--ink)">${state.lgts.map(lgtRow).join("")}</div>`;
 
   V.logement = () => {
     const l = lgt(state.lgtId);
@@ -2033,7 +2050,7 @@
 
       <div class="section">
         <div class="bar"><h2>Les treize constats</h2><span class="count">audit du 4 août 2026</span></div>
-        <div class="rows" style="margin-top:2px">
+        <div class="rows detail" style="margin-top:2px">
           ${RECETTE.map(r => `
             <div class="row" style="align-items:flex-start;gap:18px">
               <div class="grow">
@@ -2041,7 +2058,7 @@
                 <div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5;margin-top:3px">${esc(r.traitement)}</div>
                 <div class="sub" style="font-size:13px;line-height:1.5;margin-top:6px"><strong style="font-weight:500;color:var(--ink-2)">Comment le vérifier —</strong> ${esc(r.verif)}</div>
               </div>
-              <div style="flex:none;text-align:right;min-width:150px">
+              <div class="verdict">
                 ${r.ou === "recette"
                   ? `<span class="tag t-idle">En recette</span>`
                   : `<span class="tag t-ok" style="display:block;margin-bottom:8px">Vérifiable ici</span>
@@ -2053,7 +2070,7 @@
 
       <div class="section">
         <div class="bar"><h2>Ce qui va au-delà de l'audit</h2><span class="count">3</span></div>
-        <div class="rows" style="margin-top:2px">
+        <div class="rows detail" style="margin-top:2px">
           ${RECETTE_PLUS.map(([t, d, go]) => `
             <div class="row" style="align-items:flex-start;gap:18px">
               <div class="grow">
