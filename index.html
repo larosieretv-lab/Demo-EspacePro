@@ -593,8 +593,7 @@
 
   const enJours = n => n < 0 ? `expirée depuis ${-n} jour${-n > 1 ? "s" : ""}`
     : n === 0 ? "expire aujourd'hui"
-    : n < 62 ? `expire dans ${n} jours`
-    : `valable jusqu'au`;
+    : `expire dans ${n} jour${n > 1 ? "s" : ""}`;
 
   // les pièces qui ne tiendront pas jusqu'à l'ouverture de la saison
   function echeances() {
@@ -624,8 +623,17 @@
       });
     });
     if (!state.adhesion.cgu) out.push({ txt: `Conditions générales ${state.adhesion.season} à accepter`, go: "adhesion", hard: false });
-    return out;
+    return out.sort((x, y) => (y.hard ? 1 : 0) - (x.hard ? 1 : 0));   // ce qui bloque d'abord
   }
+
+  // Les décisions de l'office concernent le dossier du propriétaire : il les retrouve chez lui,
+  // au lieu de fouiller sa boîte mail pour savoir où en est son dossier.
+  const NOTIFIABLE = {
+    "Pièce validée": 1, "Pièce refusée": 1, "Bien validé": 1, "Adhésion validée": 1,
+    "Pièce déposée": 1, "Invitation acceptée": 1, "Envoi de dossier": 1, "Adhésion transmise": 1,
+    "Conditions acceptées": 1
+  };
+  const nouvelles = () => state.journal.filter(j => NOTIFIABLE[j.act]).slice(0, 5);
 
   const TABS = {
     none: [
@@ -1104,6 +1112,20 @@
         <div class="bar"><h2>À faire</h2><span class="count">${list.length ? list.length + " point" + (list.length > 1 ? "s" : "") : "à jour"}</span></div>
         ${chorehtml}
       </div>
+
+      ${nouvelles().length ? `
+      <div class="section">
+        <div class="bar"><h2>Ce qui a bougé</h2><span class="count">${nouvelles().length}</span></div>
+        <div class="rows" style="margin-top:2px">
+          ${nouvelles().map(j => `
+            <div class="row">
+              <span class="tag ${j.act === "Pièce refusée" ? "t-stop" : j.act.includes("validé") ? "t-ok" : "t-info"}">${esc(j.act)}</span>
+              <span class="grow" style="font-size:14.5px">${esc(j.detail)}</span>
+              <span class="sub num" style="flex:none">${esc(j.at)}</span>
+            </div>`).join("")}
+        </div>
+        <p class="small" style="margin-top:14px">Les mêmes lignes que le journal de l'office, filtrées sur ce qui vous concerne. Chacune part aussi par e-mail — aux deux propriétaires quand le bien en a deux, pour qu'aucun n'apprenne la nouvelle en janvier.</p>
+      </div>` : ""}
 
       <div class="section">
         <div class="bar"><h2>Mes logements</h2><span class="count">${state.lgts.length}</span></div>
