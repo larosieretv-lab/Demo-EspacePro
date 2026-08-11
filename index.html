@@ -484,6 +484,9 @@
     pending: null,
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     consent: { decided: false, audience: false, at: null, open: false },
+    sec: { fails: 0, lockUntil: null },
+    mfa: { awaiting: null, code: null, tries: 0 },
+    reset: { sent: false, mail: "" },
     journal: [
       { at: "04/08 09:12", who: "c.ravanel@example.fr", act: "Connexion", detail: "Réussie, après deux tentatives échouées" },
       { at: "04/08 09:14", who: "c.ravanel@example.fr", act: "Envoi de dossier", detail: "LGT-002 transmis pour instruction" },
@@ -548,6 +551,7 @@
   const ACCESS = {
     accueil: "public", connexion: "public", compare: "public", siret: "public",
     inscription: "public", verif: "public", invitation: "public", traceurs: "public",
+    oubli: "public", mfa: "public",
     "logement-nouveau": "owner",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
     "ot-file": "ot", "ot-proprios": "ot", "ot-journal": "ot"
@@ -618,6 +622,41 @@
       </div>
     </div>`;
 
+  // ------------------------------------------------------ connexion et 2FA
+  const PWD_DEMO = "demonstration";
+  const MAX_TRIES = 5;
+  const LOCK_MS = 15 * 60 * 1000;
+
+  // Le verrou survit au rechargement, sinon la démonstration se contournerait avec F5.
+  // Dans le produit il vit côté serveur ; ici, le mieux disponible est l'onglet.
+  const LOCK_KEY = "lr-demo-verrou";
+  try {
+    const garde = JSON.parse(sessionStorage.getItem(LOCK_KEY) || "null");
+    if (garde && garde.lockUntil > Date.now()) state.sec = garde;
+  } catch (_) { /* stockage refusé : on repart à zéro, sans casser la page */ }
+  function saveLock() {
+    try { sessionStorage.setItem(LOCK_KEY, JSON.stringify(state.sec)); } catch (_) {}
+  }
+
+  const locked = () => !!state.sec.lockUntil && Date.now() < state.sec.lockUntil;
+  function lockLeft() {
+    const ms = Math.max(0, state.sec.lockUntil - Date.now());
+    return `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+  }
+
+  // l'état du compte, recalculé à chaque seconde pendant un verrouillage
+  function loginEtat() {
+    if (locked()) {
+      return `<div class="msg stop"><strong>Compte verrouillé.</strong> Cinq tentatives ont échoué : plus rien ne passe pendant <span class="num">${lockLeft()}</span>, ni pour ce compte, ni depuis cette adresse IP. Le bon mot de passe est refusé lui aussi — c'est le principe.
+        <div class="flexrow" style="margin-top:12px"><button class="btn btn-2 btn-s" data-unlock="1">Lever le verrou (raccourci de démonstration)</button></div></div>`;
+    }
+    if (state.sec.fails > 0) {
+      const left = MAX_TRIES - state.sec.fails;
+      return `<div class="msg wait"><strong>Identifiants refusés.</strong> ${left} tentative${left > 1 ? "s" : ""} avant verrouillage. Notez ce que ce message ne dit pas : ni si l'adresse existe, ni lequel des deux champs est faux.</div>`;
+    }
+    return "";
+  }
+
   V.connexion = () => `
     <div class="head"><div>
       <h1>Connexion</h1>
@@ -627,24 +666,17 @@
     ${state.blocked ? `<div class="msg stop" style="margin-bottom:28px"><strong>Cette page demande une connexion.</strong> Vous avez été redirigé ici, et vous y reviendrez une fois connecté. TignesPro, dans le même cas, renvoie une page vide avec un code 200 : le contrôle d'accès y est un arrêt tardif du script, pas une barrière.</div>` : ""}
 
     <div class="cols">
-      <div class="panel stack" style="gap:17px">
-        <div class="stack" style="gap:6px">
-          <label for="f-mail" style="font-size:13.5px;font-weight:500;color:var(--ink)">Adresse e-mail</label>
-          <input id="f-mail" type="email" autocomplete="email" value="c.ravanel@example.fr" readonly
-            style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
-        </div>
-        <div class="stack" style="gap:6px">
-          <label for="f-pwd" style="font-size:13.5px;font-weight:500;color:var(--ink)">Mot de passe</label>
-          <input id="f-pwd" type="password" autocomplete="current-password" value="demonstration" readonly
-            style="font-family:var(--sans);font-size:15px;padding:10px 12px;border:1px solid var(--rule-2);border-radius:var(--r);background:var(--paper);color:var(--ink);width:100%">
-          <span class="small">Le collage est autorisé. Un gestionnaire de mots de passe est un allié, pas une menace.</span>
-        </div>
+      <form class="panel stack" style="gap:17px" id="form-login">
+        ${champ("l-mail", "Adresse e-mail", { type: "email", autocomplete: "email", value: "c.ravanel@example.fr" })}
+        ${champ("l-pwd", "Mot de passe", { type: "password", autocomplete: "current-password",
+          hint: "Le collage est autorisé, et sans limite de longueur : un gestionnaire de mots de passe est un allié, pas une menace." })}
+        <div id="login-etat">${loginEtat()}</div>
         <div class="flexrow">
-          <button class="btn btn-1" data-login="owner">Se connecter</button>
-          <a href="#" data-toast="Dans le produit final : envoi d'un lien de réinitialisation valable une heure." style="font-size:13.5px">Mot de passe oublié</a>
+          <button type="submit" class="btn btn-1">Se connecter</button>
+          <a href="#" data-go="oubli" style="font-size:13.5px">Mot de passe oublié</a>
         </div>
-        <p class="small">Champs figés : cette maquette ne transmet rien et ne crée aucun compte. Pour voir le back-office, ouvrez la session d'un agent depuis le bandeau jaune — dans le produit, un propriétaire n'a évidemment aucun moyen d'y accéder.</p>
-      </div>
+        <p class="small">Le mot de passe de cette maquette est <span class="num">demonstration</span>. Tapez-en un autre, autant de fois que vous voulez : le verrouillage arrive vraiment, et recharger la page ne le lève pas. Dans le produit il vit côté serveur, hors d'atteinte du navigateur.</p>
+      </form>
 
       <div>
         <div class="bar" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:2px solid var(--ink)">
@@ -654,11 +686,72 @@
           ${[
             ["Argon2id", "Le mot de passe n'est jamais stocké, seulement son empreinte."],
             ["Session serveur", "Signée, SameSite=Lax, renouvelée à chaque connexion."],
-            ["Cinq essais", "Par quart d'heure, par adresse IP et par compte."],
+            ["Cinq essais", "Par quart d'heure, par adresse IP et par compte. Essayez."],
             ["Réponse muette", "Identique que l'adresse existe ou non : on n'énumère pas les comptes."],
             ["Double facteur", "Obligatoire pour les agents de l'office, pas pour les propriétaires."]
           ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
         </div>
+        <div class="msg" style="margin-top:22px"><strong>Chaque échec part au journal.</strong> Ouvrez la session d'un agent depuis le bandeau jaune, puis l'onglet Journal : vos tentatives ratées y sont, avec l'adresse visée et l'heure.</div>
+      </div>
+    </div>`;
+
+  V.oubli = () => `
+    <div class="head"><div>
+      <h1>Mot de passe oublié</h1>
+      <p class="lede">Le seul écran de l'espace dont la réponse ne dépend pas de ce que vous saisissez. C'est volontaire.</p>
+    </div></div>
+
+    <div class="cols">
+      <form class="panel stack" style="gap:17px" id="form-oubli">
+        ${champ("o-mail", "Adresse e-mail", { type: "email", autocomplete: "email", placeholder: "vous@exemple.fr", value: state.reset.mail })}
+        ${state.reset.sent ? `<div class="msg ok"><strong>Si un compte existe pour cette adresse, un lien vient d'y être envoyé.</strong> Il est valable une heure et ne fonctionne qu'une fois.</div>` : ""}
+        <div class="flexrow">
+          <button type="submit" class="btn btn-1">Envoyer le lien</button>
+          <button type="button" class="btn btn-2" data-oubli-test="1">Essayer une adresse qui n'existe pas</button>
+        </div>
+        ${state.reset.sent ? `<p class="small">Dernière adresse soumise : <span class="num">${esc(state.reset.mail)}</span>. Réessayez avec n'importe quelle autre, existante ou pas : le message ne changera pas d'un caractère.</p>` : ""}
+      </form>
+
+      <div>
+        <div class="bar" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Pourquoi cette réponse évasive</h2></div>
+        <div class="rows" style="margin-top:2px">
+          ${[
+            ["Un formulaire bavard est un annuaire", "« Cette adresse est inconnue » permet de tester dix mille adresses et d'en tirer la liste des propriétaires de la station. Une fois la liste faite, l'hameçonnage devient crédible."],
+            ["Le temps de réponse aussi est muet", "Répondre plus vite quand le compte n'existe pas trahit la même information. La réponse est donc calée sur une durée constante."],
+            ["Le jeton ne sert qu'une fois", "Valable une heure, invalidé dès qu'il est utilisé, et invalidé aussi par un changement de mot de passe entre-temps."],
+            ["La demande est tracée", "Le journal garde l'adresse visée et l'heure : une salve de demandes se voit."]
+          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+
+  V.mfa = () => `
+    <div class="head"><div>
+      <h1>Second facteur</h1>
+      <p class="lede">Mot de passe accepté. Ça ne suffit pas pour un compte qui peut lire les dossiers de toute la station.</p>
+    </div></div>
+
+    <div class="cols">
+      <form class="panel stack" style="gap:17px" id="form-mfa">
+        ${champ("m-code", "Code à six chiffres", { autocomplete: "one-time-code", placeholder: "000000",
+          hint: "Généré par votre application d'authentification, renouvelé toutes les trente secondes." })}
+        ${state.mfa.tries > 0 ? `<div class="msg stop"><strong>Code refusé.</strong> ${3 - state.mfa.tries} tentative${3 - state.mfa.tries > 1 ? "s" : ""} avant que la connexion soit abandonnée et que vous repartiez du mot de passe.</div>` : ""}
+        <div class="flexrow">
+          <button type="submit" class="btn btn-1">Valider</button>
+          <button type="button" class="btn btn-2" data-mfa-fill="1">Coller le code</button>
+        </div>
+        <p class="small">Aucun contournement : pas de « me le redemander plus tard », pas de code de secours envoyé par SMS. Un agent qui perd son téléphone passe par l'administrateur, qui réinitialise son second facteur et le voit inscrit au journal.</p>
+      </form>
+
+      <div>
+        <div class="bar" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Votre téléphone, en principe</h2></div>
+        <div class="panel" style="margin-top:20px;text-align:center">
+          <div class="small">Espace La Rosière · ${esc(state.agent.email)}</div>
+          <div class="num" style="font-size:40px;font-weight:200;letter-spacing:.14em;color:var(--ink);margin:10px 0 6px">${esc(state.mfa.code || "——————")}</div>
+          <div class="small">expire dans 30 secondes</div>
+        </div>
+        <p style="margin-top:20px;color:var(--ink-2)">Dans le produit, ce code vit dans l'application d'authentification de l'agent et n'apparaît nulle part ailleurs. Ici, il est affiché pour que la démonstration reste jouable — c'est le seul endroit de cette maquette où on vous montre un secret.</p>
+        <div class="msg" style="margin-top:20px"><strong>TOTP, pas de SMS.</strong> Le SMS s'intercepte par détournement de carte SIM, et il coûte à chaque envoi. Une application d'authentification est gratuite, hors ligne, et fonctionne dans un local technique sans réseau.</div>
       </div>
     </div>`;
 
@@ -1645,15 +1738,15 @@
     setTimeout(() => el.remove(), 4400);
   }
 
-  function note(act, detail) {
+  function note(act, detail, who) {
     const d = new Date();
     const p = n => String(n).padStart(2, "0");
     state.journal.unshift({
       at: `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`,
       // un visiteur non connecté laisse une trace, mais pas une identité
-      who: state.auth === "ot" ? state.agent.email
+      who: who || (state.auth === "ot" ? state.agent.email
          : state.auth === "owner" ? state.owner.email
-         : "visiteur non identifié",
+         : "visiteur non identifié"),
       act, detail
     });
   }
@@ -1673,11 +1766,29 @@
         <span>Charte et couleurs relevées sur larosiere.net · Lexend (licence libre) ; les titres utilisent TT Chocolate dans la charte réelle</span>
       </footer>`;
     if (state.view === "siret") siretOut();
+
+    // le décompte du verrouillage doit tourner tant qu'on regarde l'écran de connexion
+    clearInterval(lockTimer);
+    if (state.view === "connexion" && locked()) {
+      lockTimer = setInterval(() => {
+        const box = document.getElementById("login-etat");
+        if (!box) return clearInterval(lockTimer);
+        box.innerHTML = loginEtat();
+        if (!locked()) clearInterval(lockTimer);
+      }, 1000);
+    }
     window.scrollTo({ top: 0, behavior: "instant" });
   }
+  let lockTimer = null;
 
   function go(view, id) {
     if (id) state.lgtId = id;
+    // quitter l'écran du second facteur abandonne la connexion en cours
+    if (state.view === "mfa" && view !== "mfa" && state.mfa.awaiting) {
+      state.mfa = { awaiting: null, code: null, tries: 0 };
+      note("Connexion abandonnée", "second facteur non fourni", state.agent.email);
+    }
+    if (view === "mfa" && !state.mfa.awaiting) view = "connexion";
     if (view === "logement" && !state.lgtId) state.lgtId = state.lgts[0].id;
     if (!allowed(view)) {
       if (state.auth) {                       // connecté, mais mauvais rôle → 403
@@ -1696,12 +1807,24 @@
     draw();
   }
 
+  // un agent de l'office ne passe jamais directement du mot de passe à la file d'attente
   function signIn(as) {
+    if (as === "ot") {
+      state.mfa = { awaiting: "ot", code: String(Math.floor(100000 + Math.random() * 900000)), tries: 0 };
+      state.view = "mfa";
+      note("Mot de passe accepté", "second facteur demandé", state.agent.email);
+      return draw();
+    }
+    finishSignIn(as);
+  }
+
+  function finishSignIn(as) {
     state.auth = as;
+    state.mfa.awaiting = null;
     const back = state.blocked && allowed(state.blocked) ? state.blocked : (as === "ot" ? "ot-file" : "tdb");
     state.blocked = null;
     state.view = back;
-    note("Connexion", as === "ot" ? "agent de l'office" : "propriétaire");
+    note("Connexion", as === "ot" ? "agent de l'office, second facteur validé" : "propriétaire");
     draw();
   }
 
@@ -1777,6 +1900,57 @@
   document.addEventListener("submit", e => {
     const f = e.target;
     e.preventDefault();
+
+    if (f.id === "form-login") {
+      const mail = document.getElementById("l-mail").value.trim();
+      const pwd = document.getElementById("l-pwd").value;
+      if (locked()) {                                 // le bon mot de passe est refusé lui aussi
+        note("Connexion refusée", `adresse ${mail} · compte verrouillé`);
+        toast("Refusé : le compte est verrouillé, le mot de passe n'est même pas vérifié.");
+        return draw();
+      }
+      if (pwd !== PWD_DEMO) {
+        state.sec.fails++;
+        note("Échec de connexion", `adresse ${mail} · tentative ${state.sec.fails} sur ${MAX_TRIES}`);
+        if (state.sec.fails >= MAX_TRIES) {
+          state.sec.lockUntil = Date.now() + LOCK_MS;
+          note("Compte verrouillé", "quinze minutes, par compte et par adresse IP");
+          toast("Cinquième échec. Le compte est verrouillé quinze minutes.");
+        }
+        saveLock();
+        const left = MAX_TRIES - state.sec.fails;
+        if (left > 0) toast(`Identifiants refusés. ${left} tentative${left > 1 ? "s" : ""} avant verrouillage.`);
+        return draw();
+      }
+      state.sec.fails = 0;
+      state.sec.lockUntil = null;
+      saveLock();
+      return signIn("owner");
+    }
+
+    if (f.id === "form-oubli") {
+      const mail = document.getElementById("o-mail").value.trim();
+      state.reset = { sent: true, mail };
+      note("Demande de réinitialisation", `adresse ${mail} · réponse identique quel que soit le résultat`);
+      toast("Réponse envoyée. La même, quelle que soit l'adresse.");
+      return draw();
+    }
+
+    if (f.id === "form-mfa") {
+      const code = document.getElementById("m-code").value.replace(/\s/g, "");
+      if (code === state.mfa.code) return finishSignIn(state.mfa.awaiting || "ot");
+      state.mfa.tries++;
+      note("Second facteur refusé", `tentative ${state.mfa.tries} sur 3`, state.agent.email);
+      if (state.mfa.tries >= 3) {
+        state.mfa = { awaiting: null, code: null, tries: 0 };
+        state.view = "connexion";
+        note("Connexion abandonnée", "trois codes refusés, retour au mot de passe", state.agent.email);
+        toast("Trois codes refusés. La connexion repart de zéro.");
+        return draw();
+      }
+      toast("Code refusé.");
+      return draw();
+    }
 
     if (f.id === "form-signup") {
       const societe = f.querySelector('input[name="kind"]:checked').value === "societe";
@@ -1856,10 +2030,30 @@
       return siretOut();
     }
 
-    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-send],[data-up],[data-reg],[data-cgu],[data-adh]");
+    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
     const d = t.dataset;
+
+    if (d.unlock) {
+      state.sec = { fails: 0, lockUntil: null };
+      saveLock();
+      note("Verrou levé", "raccourci de démonstration ; dans le produit, il faut attendre la fin des quinze minutes");
+      toast("Verrou levé. Dans le produit, seule l'attente le lève.");
+      return draw();
+    }
+    if (d.oubliTest) {
+      const bidon = `inconnu.${Math.floor(Math.random() * 9000 + 1000)}@example.fr`;
+      state.reset = { sent: true, mail: bidon };
+      note("Demande de réinitialisation", `adresse ${bidon} · aucun compte, réponse identique`);
+      toast("Adresse inexistante, réponse identique au caractère près.");
+      return draw();
+    }
+    if (d.mfaFill) {
+      const champCode = document.getElementById("m-code");
+      if (champCode) { champCode.value = state.mfa.code || ""; champCode.focus(); }
+      return;
+    }
 
     if (d.as) return d.as === "none" ? signOut(true) : signIn(d.as);
     if (d.login) return signIn(d.login);
