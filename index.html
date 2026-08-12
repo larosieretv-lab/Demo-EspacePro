@@ -826,14 +826,14 @@
       email: "c.ravanel@example.fr", phone: "06 12 34 56 78",
       kind: "Particulier", town: "Bourg-Saint-Maurice"
     },
-    agent: { name: "Marion Perrin", email: "m.perrin@ot-larosiere.fr" },
+    agent: { name: "Marion Perrin", email: "m.perrin@larosiere.net" },
     lgts: [
       {
         id: "LGT-001", name: "Chalet Les Mélèzes", sector: "La Rosière 1850",
         owners: [{ who: "Claire Ravanel", role: "PRIMARY", accepted: true },
                  { who: "Julien Ravanel", role: "CO_OWNER", accepted: true }],
-        street: "112 route du Petit-Saint-Bernard", beds: 8, area: 96, stars: 4,
-        reg: "73153 000 123 4Z", status: "VALIDATED",
+        street: "112 route du Col du Petit-Saint-Bernard", beds: 8, area: 96, stars: 4,
+        reg: "73176 000 123 4Z", status: "VALIDATED",
         docs: [
           { label: "Classement meublé de tourisme", file: "classement-meleze-2025.pdf", status: "VALIDATED", until: "31/03/2030" },
           { label: "Attestation d'assurance", file: "assurance-meleze-2026.pdf", status: "VALIDATED", until: "30/09/2026" },
@@ -844,7 +844,7 @@
         id: "LGT-002", name: "Appartement Les Eucherts", sector: "Les Eucherts",
         owners: [{ who: "Claire Ravanel", role: "PRIMARY", accepted: true }],
         street: "8 allée des Eucherts", beds: 4, area: 42, stars: 3,
-        reg: "73153 000 456 7B", status: "SUBMITTED",
+        reg: "73176 000 456 7B", status: "SUBMITTED",
         docs: [
           { label: "Classement meublé de tourisme", file: "classement-eucherts.pdf", status: "VALIDATED", until: "18/09/2029" },
           { label: "Attestation d'assurance", file: "assurance-eucherts.pdf", status: "PENDING", until: "31/12/2026" },
@@ -919,7 +919,7 @@
     journal: [
       { at: "04/08 09:12", who: "c.ravanel@example.fr", act: "Connexion", detail: "Réussie, après deux tentatives échouées" },
       { at: "04/08 09:14", who: "c.ravanel@example.fr", act: "Envoi de dossier", detail: "LGT-002 transmis pour instruction" },
-      { at: "03/08 17:40", who: "m.perrin@ot-larosiere.fr", act: "Pièce validée", detail: "LGT-002 · classement meublé" }
+      { at: "03/08 17:40", who: "m.perrin@larosiere.net", act: "Pièce validée", detail: "LGT-002 · classement meublé" }
     ]
   };
 
@@ -1083,7 +1083,7 @@
   V.accueil = () => `
     <div class="head"><div>
       <h1>Bonjour, et bienvenue.</h1>
-      <p class="lede">Cet espace réunit tout ce que l'office de tourisme vous demande une fois par an : vos logements, vos justificatifs, votre adhésion. Une fois le dossier à jour, vous n'y revenez plus.</p>
+      <p class="lede">Cet espace réunit tout ce que l'office de tourisme vous demande une fois par an : vos logements, vos justificatifs, votre adhésion.</p>
     </div></div>
 
     <div class="cols3">
@@ -1104,14 +1104,7 @@
         <p style="font-size:14.5px">Espace interne : documents, plannings de saison, ressources de l'équipe.</p>
       </div>
     </div>
-
-    <div class="section">
-      <div class="bar"><h2>Pourquoi ce n'est pas la même chose que TignesPro</h2></div>
-      <div class="cols" style="padding-top:22px">
-        <p style="color:var(--ink-2)">Sur TignesPro, ces trois profils sont trois applications distinctes : trois inscriptions, trois pages de mot de passe oublié, trois cookies d'identité, et un menu déroulant qui demande à l'utilisateur de deviner à quel programme il appartient.</p>
-        <p style="color:var(--ink-2)">Ici, un compte, une adresse e-mail, un mot de passe. Le rôle est porté par le compte, pas choisi dans une liste. La version 1 ne livre que la première colonne — mais les deux autres s'ajoutent sans rien réécrire.</p>
-      </div>
-    </div>`;
+`;
 
   // ------------------------------------------------------ connexion et 2FA
   const PWD_DEMO = "demonstration";
@@ -1138,12 +1131,12 @@
   // l'état du compte, recalculé à chaque seconde pendant un verrouillage
   function loginEtat() {
     if (locked()) {
-      return `<div class="msg stop"><strong>Compte verrouillé.</strong> Cinq tentatives ont échoué : plus rien ne passe pendant <span class="num">${lockLeft()}</span>, ni pour ce compte, ni depuis cette adresse IP. Le bon mot de passe est refusé lui aussi — c'est le principe.
-        <div class="flexrow" style="margin-top:12px"><button class="btn btn-2 btn-s" data-unlock="1">Lever le verrou (raccourci de démonstration)</button></div></div>`;
+      return `<div class="msg stop"><strong>Compte verrouillé.</strong> Cinq tentatives ont échoué : plus rien ne passe pendant <span class="num">${lockLeft()}</span>, ni pour ce compte, ni depuis cette adresse IP.
+        <div class="flexrow" style="margin-top:12px"><button class="btn btn-2 btn-s" data-unlock="1">Lever le verrou</button></div></div>`;
     }
     if (state.sec.fails > 0) {
       const left = MAX_TRIES - state.sec.fails;
-      return `<div class="msg wait"><strong>Identifiants refusés.</strong> ${left} tentative${left > 1 ? "s" : ""} avant verrouillage. Notez ce que ce message ne dit pas : ni si l'adresse existe, ni lequel des deux champs est faux.</div>`;
+      return `<div class="msg wait"><strong>Identifiants refusés.</strong> ${left} tentative${left > 1 ? "s" : ""} avant verrouillage.</div>`;
     }
     return "";
   }
@@ -1151,12 +1144,12 @@
   V.connexion = () => `
     <div class="head"><div>
       <h1>Connexion</h1>
-      <p class="lede">Un seul formulaire, pas de « vous êtes membre de ». Le compte sait qui vous êtes.</p>
+      <p class="lede">Une seule adresse e-mail, un seul mot de passe, quel que soit votre rôle.</p>
     </div></div>
 
-    ${state.blocked ? `<div class="msg stop" style="margin-bottom:28px"><strong>Cette page demande une connexion.</strong> Vous avez été redirigé ici, et vous y reviendrez une fois connecté. TignesPro, dans le même cas, renvoie une page vide avec un code 200 : le contrôle d'accès y est un arrêt tardif du script, pas une barrière.</div>` : ""}
+    ${state.blocked ? `<div class="msg stop" style="margin-bottom:28px"><strong>Cette page demande une connexion.</strong> Vous y reviendrez une fois connecté.</div>` : ""}
 
-    <div class="cols">
+    <div style="max-width:600px">
       <form class="panel stack" style="gap:17px" id="form-login">
         ${champ("l-mail", "Adresse e-mail", { type: "email", autocomplete: "email", value: "c.ravanel@example.fr" })}
         ${champ("l-pwd", "Mot de passe", { type: "password", autocomplete: "current-password",
@@ -1166,67 +1159,34 @@
           <button type="submit" class="btn btn-1">Se connecter</button>
           <a href="#" data-go="oubli" style="font-size:13.5px">Mot de passe oublié</a>
         </div>
-        <p class="small">Le mot de passe de cette maquette est <span class="num">demonstration</span>. Tapez-en un autre, autant de fois que vous voulez : le verrouillage arrive vraiment, et recharger la page ne le lève pas. Dans le produit il vit côté serveur, hors d'atteinte du navigateur.</p>
       </form>
 
-      <div>
-        <div class="bar" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:2px solid var(--ink)">
-          <h2>Ce qui se passe derrière ce bouton</h2>
-        </div>
-        <div class="rows" style="margin-top:2px">
-          ${[
-            ["Argon2id", "Le mot de passe n'est jamais stocké, seulement son empreinte."],
-            ["Session serveur", "Signée, SameSite=Lax, renouvelée à chaque connexion."],
-            ["Cinq essais", "Par quart d'heure, par adresse IP et par compte. Essayez."],
-            ["Réponse muette", "Identique que l'adresse existe ou non : on n'énumère pas les comptes."],
-            ["Double facteur", "Obligatoire pour les agents de l'office, pas pour les propriétaires."]
-          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
-        </div>
-        <div class="msg" style="margin-top:22px"><strong>Chaque échec part au journal.</strong> Ouvrez la session d'un agent depuis le bandeau jaune, puis l'onglet Journal : vos tentatives ratées y sont, avec l'adresse visée et l'heure.</div>
-      </div>
     </div>`;
 
   V.oubli = () => `
     <div class="head"><div>
       <h1>Mot de passe oublié</h1>
-      <p class="lede">Le seul écran de l'espace dont la réponse ne dépend pas de ce que vous saisissez. C'est volontaire.</p>
+      <p class="lede">Indiquez l'adresse de votre compte. Vous recevrez un lien de réinitialisation, valable une heure.</p>
     </div></div>
 
-    <div class="cols">
+    <div style="max-width:600px">
       <form class="panel stack" style="gap:17px" id="form-oubli">
         ${champ("o-mail", "Adresse e-mail", { type: "email", autocomplete: "email", placeholder: "vous@exemple.fr", value: state.reset.mail })}
-        ${state.reset.sent ? `<div class="stack" style="gap:8px">
-          <span class="small">Réponse du serveur, mot pour mot :</span>
-          <div class="msg ok"><strong>Si un compte existe pour cette adresse, un lien vient d'y être envoyé.</strong> Il est valable une heure et ne fonctionne qu'une fois.</div>
-          <span class="small">Dans cette maquette, aucun e-mail ne part : c'est la phrase qui est démontrée, pas l'envoi.</span>
-        </div>` : ""}
+        ${state.reset.sent ? `<div class="msg ok"><strong>Si un compte existe pour cette adresse, un lien vient d'y être envoyé.</strong> Il est valable une heure et ne fonctionne qu'une fois.</div>` : ""}
         <div class="flexrow">
           <button type="submit" class="btn btn-1">Envoyer le lien</button>
-          <button type="button" class="btn btn-2" data-oubli-test="1">Essayer une adresse qui n'existe pas</button>
         </div>
-        ${state.reset.sent ? `<p class="small">Dernière adresse soumise : <span class="num">${esc(state.reset.mail)}</span>. Réessayez avec n'importe quelle autre, existante ou pas : le message ne changera pas d'un caractère.</p>` : ""}
       </form>
 
-      <div>
-        <div class="bar" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Pourquoi cette réponse évasive</h2></div>
-        <div class="rows" style="margin-top:2px">
-          ${[
-            ["Un formulaire bavard est un annuaire", "« Cette adresse est inconnue » permet de tester dix mille adresses et d'en tirer la liste des propriétaires de la station. Une fois la liste faite, l'hameçonnage devient crédible."],
-            ["Le temps de réponse aussi est muet", "Répondre plus vite quand le compte n'existe pas trahit la même information. La réponse est donc calée sur une durée constante."],
-            ["Le jeton ne sert qu'une fois", "Valable une heure, invalidé dès qu'il est utilisé, et invalidé aussi par un changement de mot de passe entre-temps."],
-            ["La demande est tracée", "Le journal garde l'adresse visée et l'heure : une salve de demandes se voit."]
-          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
-        </div>
-      </div>
     </div>`;
 
   V.mfa = () => `
     <div class="head"><div>
       <h1>Second facteur</h1>
-      <p class="lede">Mot de passe accepté. Ça ne suffit pas pour un compte qui peut lire les dossiers de toute la station.</p>
+      <p class="lede">Mot de passe accepté. Saisissez le code affiché par votre application d'authentification.</p>
     </div></div>
 
-    <div class="cols">
+    <div style="max-width:600px">
       <form class="panel stack" style="gap:17px" id="form-mfa">
         ${champ("m-code", "Code à six chiffres", { autocomplete: "one-time-code", placeholder: "000000",
           hint: "Généré par votre application d'authentification, renouvelé toutes les trente secondes." })}
@@ -1235,36 +1195,21 @@
           <button type="submit" class="btn btn-1">Valider</button>
           <button type="button" class="btn btn-2" data-mfa-fill="1">Coller le code</button>
         </div>
-        <p class="small">Aucun contournement : pas de « me le redemander plus tard », pas de code de secours envoyé par SMS. Un agent qui perd son téléphone passe par l'administrateur, qui réinitialise son second facteur et le voit inscrit au journal.</p>
       </form>
 
-      <div>
-        <div class="bar" style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Votre téléphone, en principe</h2></div>
-        <div class="panel" style="margin-top:20px;text-align:center">
-          <div class="small">Espace La Rosière · ${esc(state.agent.email)}</div>
-          <div class="num" style="font-size:40px;font-weight:200;letter-spacing:.14em;color:var(--ink);margin:10px 0 6px">${esc(state.mfa.code || "——————")}</div>
-          <div class="small">expire dans 30 secondes</div>
-        </div>
-        <p style="margin-top:20px;color:var(--ink-2)">Dans le produit, ce code vit dans l'application d'authentification de l'agent et n'apparaît nulle part ailleurs. Ici, il est affiché pour que la démonstration reste jouable — c'est le seul endroit de cette maquette où on vous montre un secret.</p>
-        <div class="msg" style="margin-top:20px"><strong>TOTP, pas de SMS.</strong> Le SMS s'intercepte par détournement de carte SIM, et il coûte à chaque envoi. Une application d'authentification est gratuite, hors ligne, et fonctionne dans un local technique sans réseau.</div>
-      </div>
     </div>`;
 
   V.refus = () => `
     <div class="head"><div>
       <h1>Cet espace n'est pas le vôtre.</h1>
-      <p class="lede">Votre compte est bien connecté, mais il n'a pas le rôle demandé. Ce n'est pas une erreur de mot de passe : c'est une question de droits.</p>
+      <p class="lede">Votre compte est connecté, mais il n'a pas le rôle demandé.</p>
     </div></div>
-    <div class="cols">
+    <div style="max-width:600px">
       <div class="panel stack" style="gap:16px">
-        <div class="msg stop"><strong>Accès refusé.</strong> La tentative est inscrite au journal d'audit, avec le compte, l'heure et l'adresse IP.</div>
+        <div class="msg stop"><strong>Accès refusé.</strong> La tentative est inscrite au journal.</div>
         <div class="flexrow">
           <button class="btn btn-1" data-go="${state.auth === "ot" ? "ot-file" : "tdb"}">Retourner à mon espace</button>
         </div>
-      </div>
-      <div>
-        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Pourquoi cet écran existe</h2></div>
-        <p style="margin-top:20px;color:var(--ink-2)">Un défaut de droits et un défaut d'authentification sont deux choses différentes, et les confondre envoie l'utilisateur remplir un formulaire qui ne réglera rien. Ici, le middleware distingue les deux, et aucune donnée de l'espace refusé n'a été chargée avant le contrôle.</p>
       </div>
     </div>`;
 
@@ -1304,10 +1249,10 @@
   V.inscription = () => `
     <div class="head"><div>
       <h1>Créer mon compte</h1>
-      <p class="lede">Un formulaire, pas un tunnel. Les informations de vos logements viendront après — d'abord, on vous identifie.</p>
+      <p class="lede">Un seul formulaire. Les informations de vos logements viendront après — d'abord, on vous identifie.</p>
     </div></div>
 
-    <div class="cols">
+    <div style="max-width:600px">
       <form class="panel stack" style="gap:16px" id="form-signup">
         <fieldset class="stack" style="border:0;padding:0;margin:0;gap:8px">
           <legend style="font-size:13.5px;font-weight:500;color:var(--ink);padding:0 0 8px">Vous êtes</legend>
@@ -1342,43 +1287,20 @@
         </label>
 
         <button type="submit" class="btn btn-1" style="align-self:flex-start">Créer mon compte</button>
-        <p class="small">Maquette : rien n'est transmis, aucun compte n'est créé, <strong>aucun e-mail n'est envoyé</strong>. Tout se joue dans votre navigateur, et disparaît quand vous fermez l'onglet.</p>
       </form>
 
-      <div>
-        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que TignesPro fait autrement</h2></div>
-        <div class="rows">
-          ${[
-            ["Le collage est autorisé", "Leur formulaire bloque copier, coller, glisser et même la sélection sur le champ mot de passe. Résultat : des mots de passe plus courts, tapés à la main, souvent réutilisés."],
-            ["Pas de limite à cinquante caractères", "La leur empêche les phrases de passe. Une empreinte Argon2id encaisse n'importe quelle longueur."],
-            ["Une seule inscription", "Chez eux, trois formulaires séparés selon le profil, et trois pages de mot de passe oublié."],
-            ["Vérification de l'adresse", "Le compte n'est actif qu'après avoir cliqué sur le lien reçu."]
-          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
-        </div>
-      </div>
     </div>`;
 
   V.verif = () => `
     <div class="head"><div>
       <h1>Vérifiez votre boîte mail</h1>
-      <p class="lede">Dans le produit, un lien part à <strong>${esc(state.pending || "")}</strong> : valable une heure, utilisable une fois. Tant qu'il n'est pas ouvert, le compte existe mais ne donne accès à rien.</p>
+      <p class="lede">Un lien vient de partir à <strong>${esc(state.pending || "")}</strong> : valable une heure, utilisable une fois. Tant qu'il n'est pas ouvert, le compte existe mais ne donne accès à rien.</p>
     </div></div>
     <div class="cols">
       <div class="panel stack" style="gap:16px">
-        <div class="msg wait"><strong>N'allez pas voir dans votre boîte : rien n'y est.</strong> Cette maquette est un fichier unique, sans serveur, sans base de données et sans service d'envoi. Aucun e-mail n'a été expédié et aucun compte n'a été créé. Le bouton ci-dessous joue ce que produirait l'ouverture du lien.</div>
-        <div class="msg"><strong>Pourquoi cette étape existera.</strong> Sans elle, n'importe qui crée un compte avec l'adresse de quelqu'un d'autre, et l'office se retrouve avec des dossiers fantômes à démêler en octobre.</div>
-        <button class="btn btn-1" data-verify="1" style="align-self:flex-start">Jouer l'ouverture du lien</button>
-        <button class="btn btn-2 btn-s" data-toast="Dans le produit : nouveau lien envoyé, le précédent invalidé. Ici, rien ne part." style="align-self:flex-start">Renvoyer le lien</button>
-      </div>
-      <div>
-        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Le jeton</h2></div>
-        <div class="rows">
-          ${[
-            ["Haché en base", "Ce n'est pas le lien qui est stocké, mais son empreinte. Une fuite de la base ne donne aucun lien utilisable."],
-            ["À usage unique", "Consommé à la première ouverture."],
-            ["Une heure de validité", "Au-delà, il faut en redemander un."]
-          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
-        </div>
+        <div class="msg"><strong>Tant que le lien n'est pas ouvert</strong>, le compte existe mais ne donne accès à rien.</div>
+        <button class="btn btn-1" data-verify="1" style="align-self:flex-start">Ouvrir le lien reçu</button>
+        <button class="btn btn-2 btn-s" data-toast="Nouveau lien envoyé. Le précédent est invalidé." style="align-self:flex-start">Renvoyer le lien</button>
       </div>
     </div>`;
 
@@ -1387,10 +1309,10 @@
     <div class="head"><div>
       <button class="btn btn-2 btn-s" data-go="logements" style="margin-bottom:14px">← Tous mes logements</button>
       <h1>Déclarer un logement</h1>
-      <p class="lede">Le strict nécessaire pour ouvrir le dossier. Les justificatifs se déposent ensuite, à votre rythme — rien ne part à l'office tant que le dossier n'est pas complet.</p>
+      <p class="lede">Le strict nécessaire pour ouvrir le dossier. Les justificatifs se déposent ensuite, à votre rythme.</p>
     </div></div>
 
-    <div class="cols">
+    <div style="max-width:600px">
       <form class="panel stack" style="gap:16px" id="form-lgt">
         ${champ("n-nom", "Nom du logement", { placeholder: "Chalet Les Mélèzes" })}
         <div class="stack" style="gap:6px">
@@ -1411,20 +1333,10 @@
             <option value="3">3 étoiles</option><option value="4">4 étoiles</option><option value="5">5 étoiles</option>
           </select>
         </div>
-        ${champ("n-reg", "Numéro d'enregistrement en mairie", { req: false, placeholder: "73153 000 000 0X", hint: "Délivré par la commune lors de la déclaration de meublé. Vous pourrez le saisir plus tard." })}
+        ${champ("n-reg", "Numéro d'enregistrement en mairie", { req: false, placeholder: "73176 000 000 0X", hint: "Délivré par la commune lors de la déclaration de meublé. Vous pourrez le saisir plus tard." })}
         <button type="submit" class="btn btn-1" style="align-self:flex-start">Créer le dossier</button>
       </form>
 
-      <div>
-        <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce qui suivra</h2></div>
-        <div class="rows">
-          ${[
-            ["Trois justificatifs", "Classement, assurance, diagnostic énergétique. Déposés quand vous les avez sous la main."],
-            ["Un copropriétaire, si besoin", "Vous l'invitez par e-mail depuis la fiche du logement."],
-            ["L'envoi à l'office", "Le bouton ne s'active que lorsque le dossier est complet. L'office n'instruit jamais un dossier à trous."]
-          ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
-        </div>
-      </div>
     </div>`;
 
   // ------------------------------------------- invitation de copropriété
@@ -1435,9 +1347,9 @@
     return `
       <div class="head"><div>
         <h1>Vous êtes invité sur un logement</h1>
-        <p class="lede">Ce que voit la personne invitée en ouvrant le lien reçu. C'est une page publique : elle n'expose que le strict nécessaire, avant toute acceptation.</p>
+        <p class="lede">${esc(primary ? primary.who : "Un propriétaire")} vous invite à cogérer ce logement. Avant d'accepter, vous n'en voyez que le nom et la commune.</p>
       </div></div>
-      <div class="cols">
+      <div style="max-width:600px">
         <div class="panel stack" style="gap:16px">
           <dl class="spec">
             <dt>Logement</dt><dd>${esc(l.name)}</dd>
@@ -1448,17 +1360,7 @@
           <div class="msg"><strong>En acceptant</strong>, vous pourrez consulter et modifier ce dossier, déposer des pièces et l'envoyer à l'office. Chacune de vos actions sera tracée à votre nom et notifiée à l'autre propriétaire.</div>
           <div class="flexrow">
             <button class="btn btn-1" data-invite-accept="${l.id}">Accepter</button>
-            <button class="btn btn-2" data-toast="Invitation refusée. Le logement reste au seul déclarant, rien ne se bloque.">Refuser</button>
-          </div>
-        </div>
-        <div>
-          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que la page ne fait pas</h2></div>
-          <div class="rows">
-            ${[
-              ["Elle n'expose pas l'adresse exacte", "Un lien d'invitation peut se retrouver transféré. Tant que l'invité n'a pas accepté, il voit le nom du bien et sa commune, rien d'autre."],
-              ["Elle ne crée pas de compte à votre place", "L'invité s'inscrit ou se connecte, puis le rattachement se fait."],
-              ["Elle ne bloque personne", "Si l'invitation reste sans réponse, le logement reste au déclarant. Aucun dossier ne se retrouve gelé."]
-            ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
+            <button class="btn btn-2" data-toast="Invitation refusée.">Refuser</button>
           </div>
         </div>
       </div>`;
@@ -1481,7 +1383,7 @@
     return `
       <div class="head"><div>
         <h1>Bonjour ${esc(state.owner.firstName)}.</h1>
-        <p class="lede">Saison ${state.adhesion.season}. Ce que l'office attend de vous est en haut ; le reste peut attendre.</p>
+        <p class="lede">Saison ${state.adhesion.season}. Ce que l'office attend de vous est en haut.</p>
       </div></div>
 
       <div class="figures">
@@ -1506,7 +1408,7 @@
               <span class="sub num" style="flex:none">${esc(j.at)}</span>
             </div>`).join("")}
         </div>
-        <p class="small" style="margin-top:14px">Les mêmes lignes que le journal de l'office, filtrées sur ce qui vous concerne. Chacune part aussi par e-mail — aux deux propriétaires quand le bien en a deux, pour qu'aucun n'apprenne la nouvelle en janvier.</p>
+        <p class="small" style="margin-top:14px">Les mêmes lignes que le journal de l'office, filtrées sur ce qui vous concerne. Chacune part aussi par e-mail, aux deux propriétaires quand le bien en a deux.</p>
       </div>` : ""}
 
       <div class="section">
@@ -1567,10 +1469,10 @@
             </form>`
           : (o.some(x => !x.accepted)
               ? `<div class="flexrow" style="margin-top:16px;gap:10px">
-                   <button class="btn btn-2 btn-s" data-invite-view="${l.id}">Voir ce que reçoit l'invité</button>
+                   <button class="btn btn-2 btn-s" data-invite-view="${l.id}">Voir l'invitation envoyée</button>
                    <span class="small">L'invitation expire au bout de 30 jours.</span>
                  </div>`
-              : "") + `<p class="small" style="margin-top:16px">Les deux propriétaires modifient le dossier et l'envoient à l'office. Chaque action est tracée au nom de celui qui l'a faite, et notifie l'autre. Tant qu'une invitation n'est pas acceptée, l'invité ne voit rien.</p>`}
+              : "") + `<p class="small" style="margin-top:16px">Les deux propriétaires modifient le dossier et l'envoient à l'office. Chaque action est tracée au nom de celui qui l'a faite, et notifie l'autre.</p>`}
       </div>`;
   }
 
@@ -1578,7 +1480,7 @@
     <div class="head">
       <div>
         <h1>Mes logements</h1>
-        <p class="lede">Chaque bien porte son dossier et son statut. Un bien refusé n'empêche pas les autres d'avancer.</p>
+        <p class="lede">Chaque bien porte son dossier et son statut.</p>
       </div>
       <button class="btn btn-1" data-go="logement-nouveau">Déclarer un logement</button>
     </div>
@@ -1656,7 +1558,6 @@
       <div class="section">
         <div class="bar"><h2>Pièces justificatives</h2><span class="count">${l.docs.length}</span></div>
         <div class="tablewrap"><table><thead><tr><th scope="col">Pièce</th><th scope="col">Fichier</th><th scope="col">Statut</th><th scope="col"></th></tr></thead><tbody>${docRows}</tbody></table></div>
-        <p class="small" style="margin-top:16px">Les fichiers ne sont ni en base de données ni publics : stockage privé à Paris, accès par lien signé de courte durée, vérifié contre le compte qui le demande.</p>
       </div>`;
   };
 
@@ -1671,7 +1572,6 @@
           <p><strong style="color:var(--ink)">Article 1 — Objet.</strong> La présente adhésion lie le propriétaire d'un meublé de tourisme situé sur la commune à l'office de tourisme, pour la saison ${a.season}.</p>
           <p style="margin-top:12px"><strong style="color:var(--ink)">Article 2 — Engagements du propriétaire.</strong> Déclarer chaque bien mis en location, tenir à jour les attestations d'assurance et de classement, signaler tout changement de capacité en cours de saison.</p>
           <p style="margin-top:12px"><strong style="color:var(--ink)">Article 3 — Cotisation.</strong> Le montant suit le barème voté par le conseil d'administration. Il est exigible à réception de la facture.</p>
-          <p style="margin-top:12px;color:var(--ink-3)">Texte d'illustration. Les conditions réelles seront fournies par l'office.</p>
         </div>
         <button class="btn btn-1" data-cgu="1">J'accepte les conditions générales</button>`;
     } else if (a.status === "DRAFT") {
@@ -1682,7 +1582,7 @@
     } else if (a.status === "SUBMITTED") {
       body = `
         <div class="msg"><strong>Dossier transmis.</strong> L'office l'instruit. Vous recevrez un e-mail à chaque étape.</div>
-        <p class="small" style="margin-top:16px">Pour la démonstration : ouvrez la session d'un agent de l'office depuis le bandeau jaune, instruisez le dossier, puis revenez ici.</p>`;
+`;
     } else {
       body = `
         <div class="msg ok"><strong>Adhésion validée</strong> pour la saison ${a.season}. Votre dossier est complet.</div>
@@ -1691,8 +1591,7 @@
           <dt>Logements couverts</dt><dd class="num">${state.lgts.length}</dd>
           <dt>Cotisation</dt><dd>appelée par l'office</dd>
         </dl>
-        <p class="small">L'adhésion est payante, mais l'encaissement ne passe pas par cet outil en version 1 :
-        l'office appelle la cotisation par ses moyens habituels. Le paiement en ligne est chiffré en phase 2.</p>`;
+        <p class="small">La cotisation est appelée par l'office, hors de cet espace.</p>`;
     }
 
     const order = ["DRAFT", "SUBMITTED", "VALIDATED"];
@@ -1719,7 +1618,6 @@
               ["Accompagnement", "Classement meublé, déclaration en mairie, taxe de séjour."]
             ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
           </div>
-          <p class="small" style="margin-top:16px">Contreparties données à titre d'exemple, à caler sur l'offre réelle de l'office.</p>
         </div>
       </div>`;
   };
@@ -1752,7 +1650,7 @@
     const vue = b ? (() => {
       const d = droitDe(b.droit);
       return `
-        <div class="cols">
+        <div style="max-width:420px;margin:0 auto">
           <div class="panel stack" style="gap:16px;align-items:center;text-align:center">
             <div>
               <div style="font-weight:500;color:var(--ink);font-size:17px">${esc(d.nom)}</div>
@@ -1767,18 +1665,6 @@
               <button class="btn btn-2 btn-s" data-billet-retour="1">← Tous mes billets</button>
               ${b.etat === "VALIDE" ? `<button class="btn btn-no btn-s" data-annuler="${esc(b.code)}">Annuler ce billet</button>` : ""}
             </div>
-          </div>
-          <div>
-            <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que ce carré contient</h2></div>
-            <div class="rows" style="margin-top:2px">
-              ${[
-                ["Un identifiant, rien d'autre", "Le code QR ne porte ni votre nom, ni le nombre d'entrées restantes, ni une signature à recopier. Le lire ne renseigne sur rien et le fabriquer ne donne rien."],
-                ["Le compteur est ailleurs", "Vos cinq entrées sont comptées par le serveur. Un billet de plus ne s'obtient pas en modifiant cette page : elle ne fait que demander."],
-                ["Une seule fois", "Le premier contrôle consomme le billet. Une capture d'écran transmise à un ami ne crée pas une entrée de plus — elle vous en retire une."],
-                ["Annulable tant qu'il dort", "Un billet émis par erreur se rend, et l'entrée revient dans votre compte. Une fois scanné, non."]
-              ].map(([t, d2]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${esc(d2)}</div></div></div>`).join("")}
-            </div>
-            <div class="msg wait" style="margin-top:22px"><strong>Dans cette maquette, la garantie n'existe pas.</strong> Le compteur vit dans l'onglet : qui sait ouvrir la console fabrique un sixième billet. C'est précisément ce qu'un serveur empêche, et c'est la raison pour laquelle cette fonction ne peut pas être livrée sans lui.</div>
           </div>
         </div>`;
     })() : `
@@ -1811,7 +1697,7 @@
                 </div>
               </div>`).join("")}</div>`
           : `<div class="msg" style="margin-top:18px"><strong>Aucun billet édité.</strong> Vos droits restent entiers : un billet ne s'édite qu'au moment d'y aller.</div>`}
-        <p class="small" style="margin-top:16px">Les entrées sont attachées à l'adhésion de la saison ${esc(state.adhesion.season)} et ne se reportent pas d'une saison sur l'autre. Contreparties données à titre d'exemple, à caler sur l'offre réelle de l'office.</p>
+        <p class="small" style="margin-top:16px">Les entrées sont attachées à l'adhésion de la saison ${esc(state.adhesion.season)} et ne se reportent pas d'une saison sur l'autre.</p>
       </div>`;
 
     return `
@@ -1834,10 +1720,10 @@
     return `
       <div class="head"><div>
         <h1>Contrôle à l'entrée</h1>
-        <p class="lede">L'écran du cinéma ou de la patinoire. Un code scanné, une réponse : autorisé, déjà utilisé, ou inconnu.</p>
+        <p class="lede">Un code scanné, une réponse : autorisé, déjà utilisé, ou inconnu.</p>
       </div></div>
 
-      <div class="cols">
+      <div style="max-width:600px">
         <form class="panel stack" style="gap:16px" id="form-controle">
           ${champ("c-code", "Code du billet", { placeholder: "LR26-CINE-XXXXXXXX",
             hint: "Au comptoir, ce champ est rempli par la douchette ou par l'appareil photo du téléphone. Ici, tapez ou collez le code." })}
@@ -1847,43 +1733,15 @@
             ${dernier ? `<button type="button" class="btn btn-2" data-coller-billet="${esc(dernier.code)}">Coller un billet valable</button>` : ""}
             ${scan && scan.verdict === "OK" ? `<button type="button" class="btn btn-2" data-coller-billet="${esc(scan.code)}">Rejouer le même billet</button>` : ""}
           </div>
-          <p class="small">Le bouton « rejouer » est là pour la démonstration : c'est le geste du fraudeur, et il doit échouer.</p>
         </form>
 
-        <div>
-          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que le serveur garantit</h2></div>
-          <div class="rows" style="margin-top:2px">
-            ${[
-              ["La consommation est atomique", "Deux douchettes qui scannent le même billet à la même seconde : une seule passe. C'est une transaction en base, pas une vérification dans le navigateur."],
-              ["Le quota n'est pas dans le billet", "Le billet ne dit pas « il en reste quatre ». Il ne dit rien. Seul le serveur sait combien d'entrées ce propriétaire a consommées."],
-              ["Chaque scan est daté et attribué", "Qui a contrôlé, où, à quelle heure. Le jour où un propriétaire affirme n'être jamais venu, la réponse est au journal."],
-              ["Et si le réseau tombe ?", "Question à trancher avec l'office : soit le contrôle refuse hors ligne, soit il accepte et synchronise, en assumant qu'un billet puisse passer deux fois pendant la coupure. Il n'y a pas de troisième option."]
-            ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${esc(d)}</div></div></div>`).join("")}
-          </div>
-        </div>
-      </div>
-
-      ${state.avantages.billets.length ? `
-      <div class="section">
-        <div class="bar"><h2>Billets émis cette saison</h2><span class="count">${state.avantages.billets.length}</span></div>
-        <div class="tablewrap" style="margin-top:18px"><table>
-          <thead><tr><th scope="col">Code</th><th scope="col">Avantage</th><th scope="col">Propriétaire</th><th scope="col">État</th></tr></thead>
-          <tbody>${state.avantages.billets.map(b => `
-            <tr>
-              <td class="num" style="font-size:13px">${esc(b.code)}</td>
-              <td>${esc(droitDe(b.droit).nom)}</td>
-              <td>${esc(state.owner.firstName + " " + state.owner.lastName)}</td>
-              <td><span class="tag ${b.etat === "UTILISE" ? "t-idle" : "t-ok"}">${b.etat === "UTILISE" ? "Utilisé le " + esc(b.scanneLe) : "Valable"}</span></td>
-            </tr>`).join("")}</tbody>
-        </table></div>
-        <p class="small" style="margin-top:16px">Vue de démonstration : en production, l'agent d'accueil ne voit pas la liste des billets d'un propriétaire, seulement le verdict du scan. Le moins de données possible sur un comptoir.</p>
-      </div>` : ""}`;
+      </div>`;
   };
 
   V.compte = () => `
     <div class="head"><div>
       <h1>Mon compte</h1>
-      <p class="lede">Un compte, une adresse, des rôles derrière. Et deux boutons que le RGPD impose : en libre-service, pas sur demande écrite au secrétariat.</p>
+      <p class="lede">Vos coordonnées, votre mot de passe, et vos données : export et suppression en libre-service.</p>
     </div></div>
     <div class="cols">
       <div>
@@ -1904,8 +1762,8 @@
         <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Mes données</h2></div>
         <p style="margin:20px 0;color:var(--ink-2)">Export complet au format JSON, et suppression du compte sans passer par personne.</p>
         <div class="flexrow">
-          <button class="btn btn-2 btn-s" data-toast="Export JSON généré et envoyé par e-mail (démonstration).">Exporter mes données</button>
-          <button class="btn btn-no btn-s" data-toast="Données personnelles effacées, journal d'audit anonymisé (démonstration).">Supprimer mon compte</button>
+          <button class="btn btn-2 btn-s" data-toast="Export JSON généré et envoyé par e-mail.">Exporter mes données</button>
+          <button class="btn btn-no btn-s" data-toast="Données personnelles effacées, journal d'audit anonymisé.">Supprimer mon compte</button>
         </div>
         <p class="small" style="margin-top:16px">À la suppression, le journal d'audit reste, mais détaché de votre identité : on garde la traçabilité, pas la personne.</p>
       </div>
@@ -1931,7 +1789,7 @@
         <form class="panel stack" style="gap:14px" id="form-motif">
           <div>
             <div style="font-weight:500;color:var(--ink)">Pourquoi ce refus ?</div>
-            <p class="small" style="margin-top:3px">Le propriétaire lira ce motif tel quel dans son espace, et le recevra par e-mail. Un refus muet, c'est un appel au secrétariat la semaine suivante.</p>
+            <p class="small" style="margin-top:3px">Le propriétaire lira ce motif tel quel dans son espace, et le recevra par e-mail.</p>
           </div>
           <fieldset class="stack" style="border:0;padding:0;margin:0;gap:9px">
             <legend class="small" style="padding:0 0 4px">Motif</legend>
@@ -1986,13 +1844,13 @@
               <span class="tag ${jours < 0 ? "t-stop" : "t-wait"}">${esc(enJours(jours))}</span>
             </div>`).join("")}
         </div>
-        <p class="small" style="margin-top:16px">Relance automatique au propriétaire à soixante jours, puis à trente, puis à sept. L'office n'a pas à tenir un tableau des dates d'assurance — et n'a plus à découvrir en février qu'un meublé loué depuis Noël n'est plus couvert.</p>
+        <p class="small" style="margin-top:16px">Relance automatique au propriétaire à soixante jours, puis à trente, puis à sept.</p>
       </div>` : "";
 
     return `
       <div class="head"><div>
         <h1>À instruire</h1>
-        <p class="lede">Une file d'attente, pas une boîte mail partagée. Chaque décision notifie le propriétaire et s'inscrit au journal.</p>
+        <p class="lede">Chaque décision notifie le propriétaire et s'inscrit au journal.</p>
       </div></div>
 
       ${echBloc}
@@ -2062,7 +1920,7 @@
       <div class="head">
         <div>
           <h1>Propriétaires</h1>
-          <p class="lede">Recherche, filtres, export. La donnée que l'office cherche aujourd'hui dans trois classeurs et deux boîtes mail.</p>
+          <p class="lede">Recherche, filtres, export.</p>
         </div>
         <div class="flexrow">
           <button class="btn btn-2" data-csv="proprios">Exporter les propriétaires</button>
@@ -2090,7 +1948,7 @@
         <thead><tr><th scope="col">Propriétaire</th><th scope="col">Commune</th><th scope="col">Logements</th><th scope="col">Lits</th><th scope="col">Adhésion</th></tr></thead>
         <tbody id="ot-tbody">${otRows()}</tbody>
       </table></div>
-      <p class="small" style="margin-top:18px">${total} propriétaires, dont un seul dossier vivant : les autres sont fictifs et servent à démontrer la recherche et l'export. En production, la reprise du fichier existant se fait par lots de 200 par jour, avec un lien d'activation personnel — ce qui nettoie au passage les adresses mortes.</p>`;
+      <p class="small" style="margin-top:18px">${total} propriétaires. La reprise du fichier existant se fait par lots de 200 par jour, avec un lien d'activation personnel — ce qui nettoie au passage les adresses mortes.</p>`;
   };
 
   V["ot-proprio"] = () => {
@@ -2116,7 +1974,6 @@
             <dt>Statut</dt><dd>${esc(p.kind)}</dd>
             <dt>Saison ${esc(state.adhesion.season)}</dt><dd>${esc(ADH_TXT[p.adh])}</dd>
           </dl>
-          <p class="small" style="margin-top:16px">Une seule fiche, à jour, au lieu d'un fichier de contacts recopié chaque automne. L'agent ne modifie pas les coordonnées : elles appartiennent au propriétaire, qui les tient à jour depuis son espace.</p>
         </div>
         <div>
           <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ses biens</h2></div>
@@ -2134,7 +1991,7 @@
       </div>
 
       <div class="section">
-        <div class="bar"><h2>Ce que cette personne a fait</h2><span class="count">${trace.length}</span></div>
+        <div class="bar"><h2>Historique</h2><span class="count">${trace.length}</span></div>
         ${trace.length
           ? `<div class="tablewrap" style="margin-top:18px"><table>
               <thead><tr><th scope="col">Horodatage</th><th scope="col">Action</th><th scope="col">Détail</th></tr></thead>
@@ -2145,15 +2002,14 @@
                   <td style="color:var(--ink-2)">${esc(j.detail)}</td>
                 </tr>`).join("")}</tbody>
             </table></div>`
-          : `<div class="msg" style="margin-top:18px"><strong>Rien au journal pour ce compte.</strong> ${p.vivant ? "Agissez depuis l'espace propriétaire, et les lignes apparaîtront ici." : "Ce propriétaire est fictif : seul le dossier vivant de la maquette produit des traces."}</div>`}
-        <p class="small" style="margin-top:16px">Le journal est filtré sur le compte, pas recopié : c'est la même source que l'onglet Journal, vue par le petit bout. Le jour d'une contestation, c'est cet écran qu'on ouvre.</p>
+          : `<div class="msg" style="margin-top:18px"><strong>Rien au journal pour ce compte.</strong></div>`}
       </div>`;
   };
 
   V["ot-journal"] = () => `
     <div class="head"><div>
       <h1>Journal</h1>
-      <p class="lede">Qui a fait quoi, quand. Absent de TignesPro, et c'est la première chose qui manque le jour d'une contestation.</p>
+      <p class="lede">Qui a fait quoi, quand.</p>
     </div></div>
     <div class="tablewrap"><table>
       <thead><tr><th scope="col">Horodatage</th><th scope="col">Compte</th><th scope="col">Action</th><th scope="col">Détail</th></tr></thead>
@@ -2360,18 +2216,6 @@
           <div id="siret-out" style="margin-top:24px" aria-live="polite"></div>
         </div>
 
-        <div>
-          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Les quatre règles</h2></div>
-          <div class="rows">
-            ${[
-              ["Clé de contrôle", "14 chiffres et algorithme de Luhn, côté navigateur. Zéro appel réseau, 90 % des fautes de frappe éliminées. La Poste fait exception et son cas est traité."],
-              ["Établissement actif", "Un SIRET valide peut être celui d'une société radiée en 2019."],
-              ["Sur le territoire", "L'établissement doit être sur Montvalezan (INSEE 73176) ou une commune du périmètre. Un SIRET parfaitement valide à Marseille, on écarte."],
-              ["Activité cohérente", "Le code NAF doit relever de l'hébergement, de la restauration, du commerce, du sport. Hors liste, ça ne bloque pas : ça part en revue."]
-            ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
-          </div>
-          <div class="msg" style="margin-top:20px"><strong>L'indisponibilité de l'API ne bloque jamais une inscription.</strong> Coupez votre connexion et réessayez : la recherche bascule sur un jeu local et le dossier partirait en vérification différée.</div>
-        </div>
       </div>`;
   };
 
@@ -3190,7 +3034,7 @@
 
     if (d.reg) {
       const l = lgt(d.reg);
-      l.reg = "73153 000 789 1C";
+      l.reg = "73176 000 789 1C";
       l.stars = 2;
       note("Bien mis à jour", `${l.id} · numéro d'enregistrement saisi`);
       toast("Numéro d'enregistrement enregistré.");
