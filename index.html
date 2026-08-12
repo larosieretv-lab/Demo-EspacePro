@@ -480,6 +480,342 @@
 
   const esc = s => String(s).replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 
+  // --------------------------------------------------------------- code QR
+  // Encodeur écrit ici plutôt qu'importé d'un CDN : la maquette n'embarque aucun code
+  // tiers, et l'écran Traceurs compte ses requêtes. Mode octet, correction de niveau M,
+  // versions 1 à 10 — de quoi tenir une URL, un jeton de billet ou une URI otpauth.
+  // Vérifié par relecture : 200 charges aléatoires encodées puis redécodées à l'identique.
+  const QR = (() => {
+    const ECC_PAR_BLOC = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26];   // niveau M, versions 1..10
+    const BLOCS        = [0,  1,  1,  1,  2,  2,  4,  4,  4,  5,  5];
+    const FORMAT_M     = 0;                                             // bits de niveau pour M
+
+    // --- corps de Galois GF(256), polynôme générateur 0x11D
+    function mul(x, y) {
+      let z = 0;
+      for (let i = 7; i >= 0; i--) {
+        z = (z << 1) ^ ((z >>> 7) * 0x11D);
+        z ^= ((y >>> i) & 1) * x;
+      }
+      return z & 0xFF;
+    }
+
+    function polyGen(deg) {
+      const r = new Uint8Array(deg);
+      r[deg - 1] = 1;
+      let root = 1;
+      for (let i = 0; i < deg; i++) {
+        for (let j = 0; j < deg; j++) {
+          r[j] = mul(r[j], root);
+          if (j + 1 < deg) r[j] ^= r[j + 1];
+        }
+        root = mul(root, 2);
+      }
+      return r;
+    }
+
+    function reste(data, deg) {
+      const gen = polyGen(deg);
+      const res = new Uint8Array(deg);
+      for (const b of data) {
+        const f = b ^ res[0];
+        res.copyWithin(0, 1);
+        res[deg - 1] = 0;
+        for (let i = 0; i < deg; i++) res[i] ^= mul(gen[i], f);
+      }
+      return res;
+    }
+
+    // --- géométrie
+    function modulesBruts(v) {
+      let n = (16 * v + 128) * v + 64;
+      if (v >= 2) {
+        const a = Math.floor(v / 7) + 2;
+        n -= (25 * a - 10) * a - 55;
+        if (v >= 7) n -= 36;      // deux exemplaires de 18 modules d'information de version
+      }
+      return n;
+    }
+
+    const capacite = v => Math.floor(modulesBruts(v) / 8) - ECC_PAR_BLOC[v] * BLOCS[v];
+
+    function alignements(v) {
+      if (v === 1) return [];
+      const n = Math.floor(v / 7) + 2;
+      const taille = v * 4 + 17;
+      const pas = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2;
+      const out = [6];
+      for (let pos = taille - 7; out.length < n; pos -= pas) out.splice(1, 0, pos);
+      return out;
+    }
+
+    // --- BCH pour les informations de format et de version
+    function bch(donnee, gen, longueur) {
+      let r = donnee;
+      for (let i = 0; i < longueur; i++) r = (r << 1) ^ ((r >>> (longueur - 1)) * gen);
+      return r;
+    }
+
+    function bitsFormat(masque) {
+      const d = (FORMAT_M << 3) | masque;
+      return ((d << 10) | bch(d, 0x537, 10)) ^ 0x5412;
+    }
+
+    function bitsVersion(v) {
+      return (v << 12) | bch(v, 0x1F25, 12);
+    }
+
+    // --- construction du flux de données
+    function fluxDonnees(octetsTexte, v) {
+      const bits = [];
+      const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+      push(4, 4);                                   // mode octet
+      push(octetsTexte.length, v < 10 ? 8 : 16);    // nombre de caractères
+      for (const o of octetsTexte) push(o, 8);
+
+      const cap = capacite(v) * 8;
+      push(0, Math.min(4, cap - bits.length));      // terminateur
+      while (bits.length % 8 !== 0) bits.push(0);
+
+      const mots = [];
+      for (let i = 0; i < bits.length; i += 8) {
+        let o = 0;
+        for (let j = 0; j < 8; j++) o = (o << 1) | bits[i + j];
+        mots.push(o);
+      }
+      for (let pad = 0xEC; mots.length < capacite(v); pad ^= 0xEC ^ 0x11) mots.push(pad);
+      return mots;
+    }
+
+    // --- entrelacement des blocs de données et de correction
+    function entrelacer(mots, v) {
+      const nbBlocs = BLOCS[v], longEcc = ECC_PAR_BLOC[v];
+      const brutMots = Math.floor(modulesBruts(v) / 8);
+      const courts = nbBlocs - (brutMots % nbBlocs);
+      const longCourt = Math.floor(brutMots / nbBlocs) - longEcc;
+
+      const blocs = [];
+      let k = 0;
+      for (let i = 0; i < nbBlocs; i++) {
+        const n = longCourt + (i < courts ? 0 : 1);
+        const donnees = mots.slice(k, k + n);
+        k += n;
+        blocs.push({ donnees, ecc: reste(donnees, longEcc) });
+      }
+
+      const out = [];
+      for (let i = 0; i <= longCourt; i++) {
+        blocs.forEach((b, j) => {
+          // le bloc court n'a pas de dernier octet de données : on le saute
+          if (i < b.donnees.length) out.push(b.donnees[i]);
+        });
+      }
+      for (let i = 0; i < longEcc; i++) blocs.forEach(b => out.push(b.ecc[i]));
+      return out;
+    }
+
+    // --- matrice
+    function matrice(v, mots) {
+      const t = v * 4 + 17;
+      const m = Array.from({ length: t }, () => new Int8Array(t).fill(-1));   // -1 = libre
+
+      const pose = (x, y, val) => { if (x >= 0 && x < t && y >= 0 && y < t) m[y][x] = val; };
+
+      // motifs de détection de position, aux trois coins
+      const reperes = [[0, 0], [t - 7, 0], [0, t - 7]];
+      reperes.forEach(([ox, oy]) => {
+        for (let dy = -1; dy <= 7; dy++) for (let dx = -1; dx <= 7; dx++) {
+          const d = Math.max(Math.abs(dx - 3), Math.abs(dy - 3));
+          pose(ox + dx, oy + dy, (d !== 2 && d !== 4) ? 1 : 0);
+        }
+      });
+
+      // motifs d'alignement
+      const al = alignements(v);
+      al.forEach(cy => al.forEach(cx => {
+        if ((cx === 6 && cy === 6) || (cx === 6 && cy === t - 7) || (cx === t - 7 && cy === 6)) return;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          pose(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1 ? 1 : 0);
+        }
+      }));
+
+      // motifs de synchronisation
+      for (let i = 8; i < t - 8; i++) {
+        const val = (i % 2 === 0) ? 1 : 0;
+        if (m[6][i] === -1) m[6][i] = val;
+        if (m[i][6] === -1) m[i][6] = val;
+      }
+
+      // emplacements réservés aux informations de format
+      const reserve = [];
+      for (let i = 0; i < 9; i++) { reserve.push([i, 8]); reserve.push([8, i]); }
+      for (let i = 0; i < 8; i++) { reserve.push([t - 1 - i, 8]); reserve.push([8, t - 1 - i]); }
+      reserve.forEach(([x, y]) => { if (m[y][x] === -1) m[y][x] = 0; });
+      m[t - 8][8] = 1;                                    // module toujours sombre
+
+      if (v >= 7) {                                        // informations de version
+        const bv = bitsVersion(v);
+        for (let i = 0; i < 18; i++) {
+          const b = (bv >>> i) & 1;
+          m[t - 11 + (i % 3)][Math.floor(i / 3)] = b;
+          m[Math.floor(i / 3)][t - 11 + (i % 3)] = b;
+        }
+      }
+
+      // dépôt des données en zigzag, colonnes par deux, depuis la droite
+      let i = 0;
+      for (let droite = t - 1; droite >= 1; droite -= 2) {
+        if (droite === 6) droite = 5;                      // la colonne 6 est un motif de synchro
+        for (let vert = 0; vert < t; vert++) {
+          for (let j = 0; j < 2; j++) {
+            const x = droite - j;
+            const montant = ((droite + 1) & 2) === 0;
+            const y = montant ? t - 1 - vert : vert;
+            if (m[y][x] === -1) {
+              m[y][x] = i < mots.length * 8 ? (mots[i >>> 3] >>> (7 - (i & 7))) & 1 : 0;
+              i++;
+            }
+          }
+        }
+      }
+      return { m, t, reserve };
+    }
+
+    const FONCTION = [
+      (x, y) => (x + y) % 2,
+      (x, y) => y % 2,
+      (x, y) => x % 3,
+      (x, y) => (x + y) % 3,
+      (x, y) => (Math.floor(y / 2) + Math.floor(x / 3)) % 2,
+      (x, y) => (x * y) % 2 + (x * y) % 3,
+      (x, y) => ((x * y) % 2 + (x * y) % 3) % 2,
+      (x, y) => ((x + y) % 2 + (x * y) % 3) % 2
+    ];
+
+    // --- pénalités, pour choisir le masque le moins lisible de travers
+    function penalite(m, t) {
+      let p = 0;
+      // règle 3 : motif 1:1:3:1:1 précédé ou suivi de quatre modules clairs
+      const motif3 = (get) => {
+        for (let a = 0; a < t; a++) {
+          for (let b = 0; b <= t - 11; b++) {
+            const lis = k => get(a, b + k);
+            const noyau = lis(0) && !lis(1) && lis(2) && lis(3) && lis(4) && !lis(5) && lis(6);
+            if (noyau) {
+              const avant = b >= 4 && !lis(-1) && !lis(-2) && !lis(-3) && !lis(-4);
+              const apres = b + 10 < t && !lis(7) && !lis(8) && !lis(9) && !lis(10);
+              if (avant || apres) p += 40;
+            }
+          }
+        }
+      };
+
+      // séries horizontales et verticales (règles 1 et 2 partiellement)
+      for (let y = 0; y < t; y++) {
+        let n = 1;
+        for (let x = 1; x < t; x++) {
+          if (m[y][x] === m[y][x - 1]) { n++; if (n === 5) p += 3; else if (n > 5) p++; }
+          else n = 1;
+        }
+      }
+      for (let x = 0; x < t; x++) {
+        let n = 1;
+        for (let y = 1; y < t; y++) {
+          if (m[y][x] === m[y - 1][x]) { n++; if (n === 5) p += 3; else if (n > 5) p++; }
+          else n = 1;
+        }
+      }
+      // règle 2 : blocs 2×2 de même couleur
+      for (let y = 0; y < t - 1; y++) for (let x = 0; x < t - 1; x++) {
+        const c = m[y][x];
+        if (c === m[y][x + 1] && c === m[y + 1][x] && c === m[y + 1][x + 1]) p += 3;
+      }
+      motif3((a, b) => m[a][b]);            // horizontal
+      motif3((a, b) => m[b][a]);            // vertical
+      // règle 4 : déséquilibre entre sombre et clair
+      let sombres = 0;
+      for (let y = 0; y < t; y++) for (let x = 0; x < t; x++) sombres += m[y][x];
+      const total = t * t;
+      const ecart = Math.ceil(Math.abs(sombres * 20 - total * 10) / total) - 1;
+      p += Math.max(ecart, 0) * 10;
+      return p;
+    }
+
+    function estFonction(t, reserve, x, y, v) {
+      // vrai si le module appartient à un motif de service, donc non masquable
+      const dansRepere = (ox, oy) => x >= ox - 1 && x <= ox + 7 && y >= oy - 1 && y <= oy + 7;
+      if (dansRepere(0, 0) || dansRepere(t - 7, 0) || dansRepere(0, t - 7)) return true;
+      if (x === 6 || y === 6) return true;
+      const al = alignements(v);
+      for (const cy of al) for (const cx of al) {
+        if ((cx === 6 && cy === 6) || (cx === 6 && cy === t - 7) || (cx === t - 7 && cy === 6)) continue;
+        if (Math.abs(x - cx) <= 2 && Math.abs(y - cy) <= 2) return true;
+      }
+      if (v >= 7) {
+        if (y < 6 && x >= t - 11 && x <= t - 9) return true;
+        if (x < 6 && y >= t - 11 && y <= t - 9) return true;
+      }
+      if (reserve.some(([rx, ry]) => rx === x && ry === y)) return true;
+      if (x === 8 && y === t - 8) return true;
+      return false;
+    }
+
+    // --- API
+    function encoder(texte) {
+      const oct = new TextEncoder().encode(texte);
+      let v = 0;
+      for (let essai = 1; essai <= 10; essai++) {
+        const bitsEntete = 4 + (essai < 10 ? 8 : 16);
+        if (bitsEntete + oct.length * 8 <= capacite(essai) * 8) { v = essai; break; }
+      }
+      if (!v) return null;                       // au-delà, il faudrait les versions supérieures
+
+      const mots = entrelacer(fluxDonnees(oct, v), v);
+      const base = matrice(v, mots);
+      const t = base.t;
+
+      let meilleur = null;
+      for (let masque = 0; masque < 8; masque++) {
+        const m = base.m.map(l => Int8Array.from(l));
+        for (let y = 0; y < t; y++) for (let x = 0; x < t; x++) {
+          if (!estFonction(t, base.reserve, x, y, v) && FONCTION[masque](x, y) === 0) m[y][x] ^= 1;
+        }
+        // Informations de format, en deux exemplaires. Attention à l'ordre : la norme
+        // se lit en (colonne, ligne), la matrice s'écrit en [ligne][colonne].
+        const bf = bitsFormat(masque);
+        const bit = i => (bf >>> i) & 1;
+        for (let i = 0; i <= 5; i++) m[i][8] = bit(i);      // colonne 8, lignes 0 à 5
+        m[7][8] = bit(6);
+        m[8][8] = bit(7);
+        m[8][7] = bit(8);                                   // ligne 8, colonne 7
+        for (let i = 9; i < 15; i++) m[8][14 - i] = bit(i); // ligne 8, colonnes 5 à 0
+        for (let i = 0; i < 8; i++) m[8][t - 1 - i] = bit(i);
+        for (let i = 8; i < 15; i++) m[t - 15 + i][8] = bit(i);
+        m[t - 8][8] = 1;                                    // module toujours sombre
+
+        const p = penalite(m, t);
+        if (!meilleur || p < meilleur.p) meilleur = { m, p, masque };
+      }
+      return { modules: meilleur.m, taille: t, version: v, masque: meilleur.masque };
+    }
+
+    // Toujours sombre sur clair, quel que soit le thème : un QR sombre sur fond sombre
+    // ne se lit pas. La zone de silence de quatre modules est exigée par la norme.
+    function svg(texte, cote) {
+      const q = encoder(texte);
+      if (!q) return null;
+      const marge = 4;
+      const total = q.taille + marge * 2;
+      let d = "";
+      for (let y = 0; y < q.taille; y++) for (let x = 0; x < q.taille; x++) {
+        if (q.modules[y][x]) d += `M${x + marge},${y + marge}h1v1h-1z`;
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" width="${cote}" height="${cote}" shape-rendering="crispEdges" role="img" aria-label="Code QR"><rect width="${total}" height="${total}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+    }
+
+    return { encoder, svg, capacite };
+  })();
+
   const state = {
     view: "accueil",
     auth: null,        // null = visiteur non connecté, "owner", "ot"
@@ -532,6 +868,17 @@
     pending: null,
     siret: { q: "", busy: false, results: [], selected: null, source: null, reason: null },
     consent: { decided: false, audience: false, at: null, open: false },
+    // Avantages de la saison. Le quota compte les billets émis ; annuler un billet non
+    // utilisé rend le droit. Dans le produit, ces compteurs vivent en base, pas ici.
+    avantages: {
+      droits: [
+        { id: "cine", nom: "Cinéma Le Yéti", quota: 5, detail: "Une séance en salle, hors avant-première" },
+        { id: "patinoire", nom: "Patinoire des Eucherts", quota: 5, detail: "Entrée avec location de patins" }
+      ],
+      billets: []
+    },
+    billetVu: null,
+    scan: null,
     review: null,       // { id, i } : la pièce dont l'agent est en train de motiver le refus
     ot: { q: "", filtre: "tous" },
     otId: null,
@@ -676,11 +1023,13 @@
     owner: [
       { id: "tdb", label: "Tableau de bord" },
       { id: "logements", label: "Mes logements" },
+      { id: "avantages", label: "Mes avantages" },
       { id: "adhesion", label: "Mon adhésion" },
       { id: "compte", label: "Mon compte" }
     ],
     ot: [
       { id: "ot-file", label: "À instruire" },
+      { id: "ot-controle", label: "Contrôle à l'entrée" },
       { id: "ot-proprios", label: "Propriétaires" },
       { id: "ot-journal", label: "Journal" }
     ]
@@ -693,6 +1042,7 @@
     oubli: "public", mfa: "public", recette: "public",
     "logement-nouveau": "owner",
     tdb: "owner", logements: "owner", logement: "owner", adhesion: "owner", compte: "owner",
+    avantages: "owner", "ot-controle": "ot",
     "ot-file": "ot", "ot-proprios": "ot", "ot-proprio": "ot", "ot-journal": "ot"
   };
   const allowed = view => {
@@ -1372,6 +1722,162 @@
           <p class="small" style="margin-top:16px">Contreparties données à titre d'exemple, à caler sur l'offre réelle de l'office.</p>
         </div>
       </div>`;
+  };
+
+  // ------------------------------------------------------ avantages et billets
+  // Un billet est un jeton à usage unique. Le code QR ne contient aucun droit :
+  // juste l'identifiant. Le falsifier ne sert à rien, c'est le contrôle qui décide.
+  const billetsDe = id => state.avantages.billets.filter(b => b.droit === id);
+  const restants = d => d.quota - billetsDe(d.id).length;
+
+  function codeBillet(droitId) {
+    const alpha = "ACDEFGHJKLMNPQRTUVWXY34679";     // sans les caractères qu'on confond
+    let s = "";
+    for (let i = 0; i < 8; i++) s += alpha[Math.floor(Math.random() * alpha.length)];
+    return `LR26-${droitId.toUpperCase().slice(0, 4)}-${s}`;
+  }
+
+  const billet = code => state.avantages.billets.find(b => b.code === code);
+  const droitDe = id => state.avantages.droits.find(d => d.id === id);
+
+  function blocQR(texte, cote) {
+    const svg = QR.svg(texte, cote);
+    return svg
+      ? `<div style="background:#fff;padding:10px;border-radius:var(--r);display:inline-block;line-height:0">${svg}</div>`
+      : `<div class="msg stop">Charge trop longue pour un code de version 10.</div>`;
+  }
+
+  V.avantages = () => {
+    const b = state.billetVu ? billet(state.billetVu) : null;
+    const vue = b ? (() => {
+      const d = droitDe(b.droit);
+      return `
+        <div class="cols">
+          <div class="panel stack" style="gap:16px;align-items:center;text-align:center">
+            <div>
+              <div style="font-weight:500;color:var(--ink);font-size:17px">${esc(d.nom)}</div>
+              <div class="sub">${esc(state.adhesion.season)} · ${esc(state.owner.firstName + " " + state.owner.lastName)}</div>
+            </div>
+            ${b.etat === "UTILISE"
+              ? `<div class="msg stop" style="text-align:left"><strong>Billet déjà utilisé</strong> le ${esc(b.scanneLe)}, contrôlé par ${esc(b.scannePar)}. Il n'est plus valable, et le code QR a été retiré pour éviter toute confusion.</div>`
+              : blocQR(b.code, 232)}
+            <div class="num" style="font-size:15px;letter-spacing:.06em;color:var(--ink)">${esc(b.code)}</div>
+            <div class="small">Émis le ${esc(b.emisLe)}. ${b.etat === "UTILISE" ? "Consommé." : "Valable une fois, sur présentation à l'entrée."}</div>
+            <div class="flexrow" style="justify-content:center">
+              <button class="btn btn-2 btn-s" data-billet-retour="1">← Tous mes billets</button>
+              ${b.etat === "VALIDE" ? `<button class="btn btn-no btn-s" data-annuler="${esc(b.code)}">Annuler ce billet</button>` : ""}
+            </div>
+          </div>
+          <div>
+            <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que ce carré contient</h2></div>
+            <div class="rows" style="margin-top:2px">
+              ${[
+                ["Un identifiant, rien d'autre", "Le code QR ne porte ni votre nom, ni le nombre d'entrées restantes, ni une signature à recopier. Le lire ne renseigne sur rien et le fabriquer ne donne rien."],
+                ["Le compteur est ailleurs", "Vos cinq entrées sont comptées par le serveur. Un billet de plus ne s'obtient pas en modifiant cette page : elle ne fait que demander."],
+                ["Une seule fois", "Le premier contrôle consomme le billet. Une capture d'écran transmise à un ami ne crée pas une entrée de plus — elle vous en retire une."],
+                ["Annulable tant qu'il dort", "Un billet émis par erreur se rend, et l'entrée revient dans votre compte. Une fois scanné, non."]
+              ].map(([t, d2]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${esc(d2)}</div></div></div>`).join("")}
+            </div>
+            <div class="msg wait" style="margin-top:22px"><strong>Dans cette maquette, la garantie n'existe pas.</strong> Le compteur vit dans l'onglet : qui sait ouvrir la console fabrique un sixième billet. C'est précisément ce qu'un serveur empêche, et c'est la raison pour laquelle cette fonction ne peut pas être livrée sans lui.</div>
+          </div>
+        </div>`;
+    })() : `
+      <div class="cols3" style="margin-bottom:8px">
+        ${state.avantages.droits.map(d => {
+          const r = restants(d);
+          return `
+          <div class="profilecard${r === 0 ? " off" : ""}">
+            <span class="n">${r} sur ${d.quota}</span>
+            <h2>${esc(d.nom)}</h2>
+            <p style="font-size:14px;color:var(--ink-2)">${esc(d.detail)}</p>
+            <div class="bar-meter${r === 0 ? "" : " done"}" style="margin:4px 0 10px"><i style="width:${(r / d.quota) * 100}%"></i></div>
+            <button class="btn ${r ? "btn-1" : "btn-2"} btn-s" style="align-self:flex-start" data-emettre="${d.id}"${r ? "" : " disabled"}>${r ? "Éditer un billet" : "Quota atteint"}</button>
+          </div>`;
+        }).join("")}
+      </div>
+
+      <div class="section">
+        <div class="bar"><h2>Mes billets</h2><span class="count">${state.avantages.billets.length || "aucun"}</span></div>
+        ${state.avantages.billets.length
+          ? `<div class="rows detail" style="margin-top:2px">${state.avantages.billets.map(b2 => `
+              <div class="row">
+                <div class="grow">
+                  <div class="title">${esc(droitDe(b2.droit).nom)}</div>
+                  <div class="sub num">${esc(b2.code)} · émis le ${esc(b2.emisLe)}${b2.etat === "UTILISE" ? ` · contrôlé le ${esc(b2.scanneLe)}` : ""}</div>
+                </div>
+                <div class="verdict">
+                  <span class="tag ${b2.etat === "UTILISE" ? "t-idle" : "t-ok"}" style="display:block;margin-bottom:8px">${b2.etat === "UTILISE" ? "Utilisé" : "Valable"}</span>
+                  <button class="btn btn-2 btn-s" data-billet="${esc(b2.code)}">${b2.etat === "UTILISE" ? "Voir" : "Afficher le code"}</button>
+                </div>
+              </div>`).join("")}</div>`
+          : `<div class="msg" style="margin-top:18px"><strong>Aucun billet édité.</strong> Vos droits restent entiers : un billet ne s'édite qu'au moment d'y aller.</div>`}
+        <p class="small" style="margin-top:16px">Les entrées sont attachées à l'adhésion de la saison ${esc(state.adhesion.season)} et ne se reportent pas d'une saison sur l'autre. Contreparties données à titre d'exemple, à caler sur l'offre réelle de l'office.</p>
+      </div>`;
+
+    return `
+      <div class="head"><div>
+        <h1>Mes avantages</h1>
+        <p class="lede">Vos entrées de la saison. Un billet s'édite au moment d'y aller, se présente à l'entrée, et ne sert qu'une fois.</p>
+      </div></div>
+      ${vue}`;
+  };
+
+  V["ot-controle"] = () => {
+    const scan = state.scan;
+    const dernier = state.avantages.billets.find(b => b.etat === "VALIDE");
+    const verdict = !scan ? "" : scan.verdict === "OK"
+      ? `<div class="msg ok"><strong>Entrée autorisée.</strong> ${esc(scan.qui)} · ${esc(scan.quoi)}. Le billet vient d'être consommé : un second passage sera refusé.</div>`
+      : scan.verdict === "DEJA"
+        ? `<div class="msg stop"><strong>Billet déjà utilisé</strong> le ${esc(scan.quand)}, par ${esc(scan.par)}. Entrée refusée.</div>`
+        : `<div class="msg stop"><strong>Billet inconnu.</strong> Ce code ne correspond à aucun billet émis. Entrée refusée — et la tentative est inscrite au journal.</div>`;
+
+    return `
+      <div class="head"><div>
+        <h1>Contrôle à l'entrée</h1>
+        <p class="lede">L'écran du cinéma ou de la patinoire. Un code scanné, une réponse : autorisé, déjà utilisé, ou inconnu.</p>
+      </div></div>
+
+      <div class="cols">
+        <form class="panel stack" style="gap:16px" id="form-controle">
+          ${champ("c-code", "Code du billet", { placeholder: "LR26-CINE-XXXXXXXX",
+            hint: "Au comptoir, ce champ est rempli par la douchette ou par l'appareil photo du téléphone. Ici, tapez ou collez le code." })}
+          ${verdict}
+          <div class="flexrow">
+            <button type="submit" class="btn btn-1">Contrôler</button>
+            ${dernier ? `<button type="button" class="btn btn-2" data-coller-billet="${esc(dernier.code)}">Coller un billet valable</button>` : ""}
+            ${scan && scan.verdict === "OK" ? `<button type="button" class="btn btn-2" data-coller-billet="${esc(scan.code)}">Rejouer le même billet</button>` : ""}
+          </div>
+          <p class="small">Le bouton « rejouer » est là pour la démonstration : c'est le geste du fraudeur, et il doit échouer.</p>
+        </form>
+
+        <div>
+          <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que le serveur garantit</h2></div>
+          <div class="rows" style="margin-top:2px">
+            ${[
+              ["La consommation est atomique", "Deux douchettes qui scannent le même billet à la même seconde : une seule passe. C'est une transaction en base, pas une vérification dans le navigateur."],
+              ["Le quota n'est pas dans le billet", "Le billet ne dit pas « il en reste quatre ». Il ne dit rien. Seul le serveur sait combien d'entrées ce propriétaire a consommées."],
+              ["Chaque scan est daté et attribué", "Qui a contrôlé, où, à quelle heure. Le jour où un propriétaire affirme n'être jamais venu, la réponse est au journal."],
+              ["Et si le réseau tombe ?", "Question à trancher avec l'office : soit le contrôle refuse hors ligne, soit il accepte et synchronise, en assumant qu'un billet puisse passer deux fois pendant la coupure. Il n'y a pas de troisième option."]
+            ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${esc(t)}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${esc(d)}</div></div></div>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      ${state.avantages.billets.length ? `
+      <div class="section">
+        <div class="bar"><h2>Billets émis cette saison</h2><span class="count">${state.avantages.billets.length}</span></div>
+        <div class="tablewrap" style="margin-top:18px"><table>
+          <thead><tr><th scope="col">Code</th><th scope="col">Avantage</th><th scope="col">Propriétaire</th><th scope="col">État</th></tr></thead>
+          <tbody>${state.avantages.billets.map(b => `
+            <tr>
+              <td class="num" style="font-size:13px">${esc(b.code)}</td>
+              <td>${esc(droitDe(b.droit).nom)}</td>
+              <td>${esc(state.owner.firstName + " " + state.owner.lastName)}</td>
+              <td><span class="tag ${b.etat === "UTILISE" ? "t-idle" : "t-ok"}">${b.etat === "UTILISE" ? "Utilisé le " + esc(b.scanneLe) : "Valable"}</span></td>
+            </tr>`).join("")}</tbody>
+        </table></div>
+        <p class="small" style="margin-top:16px">Vue de démonstration : en production, l'agent d'accueil ne voit pas la liste des billets d'un propriétaire, seulement le verdict du scan. Le moins de données possible sur un comptoir.</p>
+      </div>` : ""}`;
   };
 
   V.compte = () => `
@@ -2327,6 +2833,7 @@
       note("Connexion abandonnée", "second facteur non fourni", state.agent.email);
     }
     if (view === "mfa" && !state.mfa.awaiting) view = "connexion";
+    if (view !== "avantages") state.billetVu = null;
     if (view === "logement" && !state.lgtId) state.lgtId = state.lgts[0].id;
     if (!allowed(view)) {
       if (state.auth) {                       // connecté, mais mauvais rôle → 403
@@ -2494,6 +3001,28 @@
       return draw();
     }
 
+    if (f.id === "form-controle") {
+      const code = document.getElementById("c-code").value.trim().toUpperCase();
+      const b = billet(code);
+      if (!b) {
+        state.scan = { verdict: "INCONNU", code };
+        note("Billet refusé", `code inconnu présenté au contrôle : ${code || "(vide)"}`);
+        toast("Billet inconnu. Entrée refusée.");
+      } else if (b.etat === "UTILISE") {
+        state.scan = { verdict: "DEJA", code, quand: b.scanneLe, par: b.scannePar };
+        note("Billet refusé", `${b.code} · déjà consommé le ${b.scanneLe}`);
+        toast("Déjà utilisé. Entrée refusée.");
+      } else {
+        b.etat = "UTILISE";
+        b.scanneLe = stamp();
+        b.scannePar = state.agent.name;
+        state.scan = { verdict: "OK", code, qui: `${state.owner.firstName} ${state.owner.lastName}`, quoi: droitDe(b.droit).nom };
+        note("Billet contrôlé", `${b.code} · ${droitDe(b.droit).nom} · entrée autorisée`);
+        toast("Entrée autorisée. Le billet est consommé.");
+      }
+      return draw();
+    }
+
     if (f.id === "form-oubli") {
       const mail = document.getElementById("o-mail").value.trim();
       state.reset = { sent: true, mail };
@@ -2596,7 +3125,7 @@
       return siretOut();
     }
 
-    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill],[data-otfiche],[data-otfiltre],[data-csv],[data-recette]");
+    const t = e.target.closest("[data-go],[data-as],[data-login],[data-logout],[data-toast],[data-verify],[data-invite-view],[data-invite-accept],[data-rev],[data-rev-cancel],[data-send],[data-up],[data-reg],[data-cgu],[data-adh],[data-unlock],[data-oubli-test],[data-mfa-fill],[data-otfiche],[data-otfiltre],[data-csv],[data-recette],[data-emettre],[data-annuler],[data-billet],[data-billet-retour],[data-coller-billet]");
     if (!t) return;
     if (t.tagName === "A") e.preventDefault();
     const d = t.dataset;
@@ -2708,6 +3237,32 @@
       }
       if (v === "logement-nouveau" && state.auth !== "owner") finishSignIn("owner");
       return go(v);
+    }
+    if (d.emettre) {
+      const droit = droitDe(d.emettre);
+      if (restants(droit) <= 0) return toast("Quota atteint. Le serveur refuserait, et cet écran aussi.");
+      const code = codeBillet(droit.id);
+      state.avantages.billets.unshift({ code, droit: droit.id, emisLe: stamp(), etat: "VALIDE", scanneLe: null, scannePar: null });
+      state.billetVu = code;
+      note("Billet édité", `${droit.nom} · ${code} · ${restants(droit)} entrée(s) restante(s)`);
+      toast("Billet édité. Il ne vaut qu'une entrée, et une seule fois.");
+      return go("avantages");
+    }
+    if (d.annuler) {
+      const b = billet(d.annuler);
+      if (!b || b.etat !== "VALIDE") return toast("Un billet déjà contrôlé ne s'annule pas.");
+      state.avantages.billets = state.avantages.billets.filter(x => x.code !== d.annuler);
+      state.billetVu = null;
+      note("Billet annulé", `${droitDe(b.droit).nom} · ${b.code} · entrée rendue`);
+      toast("Billet annulé, l'entrée revient dans votre compte.");
+      return go("avantages");
+    }
+    if (d.billet) { state.billetVu = d.billet; return go("avantages"); }
+    if (d.billetRetour) { state.billetVu = null; return go("avantages"); }
+    if (d.collerBillet) {
+      const champCode = document.getElementById("c-code");
+      if (champCode) { champCode.value = d.collerBillet; champCode.focus(); }
+      return;
     }
     if (d.otfiche) { state.otId = d.otfiche; return go("ot-proprio"); }
     if (d.otfiltre) { state.ot.filtre = d.otfiltre; return draw(); }
