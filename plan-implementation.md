@@ -4,8 +4,11 @@ Périmètre : **propriétaires uniquement**, avec leur système de comptes et le
 office de tourisme nécessaire pour les valider. Socio-pros et salariés sont hors périmètre v1
 (voir §10). Base de l'analyse : [analyse-tignespro.md](analyse-tignespro.md).
 
-**Durée : 8 semaines.** Démarrage début août 2026 → **mise en ligne début octobre 2026**,
-soit avant l'ouverture de la saison d'hiver. C'est la fenêtre à tenir.
+**Durée : 9 semaines** (8 pour le socle, 1 pour le module des avantages décidé le 12 août).
+Le compte à rebours part de la validation, pas de la rédaction : un feu vert avant fin août
+met la mise en ligne **fin octobre**, soit six semaines avant l'ouverture de la saison, fixée
+au 12 décembre 2026. C'est la fenêtre à tenir, et elle se referme d'une semaine par semaine
+d'attente.
 
 ---
 
@@ -21,7 +24,16 @@ Quatre points tranchés, qui figent le périmètre v1 :
 | **Les faiblesses de sécurité sont un livrable** | Les 13 constats de l'audit deviennent des critères de recette opposables, pas une intention — voir §8 |
 
 **Le troc est neutre sur le calendrier** : la semaine libérée par l'encaissement finance la
-copropriété et le durcissement sécurité. Les 8 semaines tiennent.
+copropriété et le durcissement sécurité. Les 8 semaines du socle tiennent.
+
+### Décision complémentaire — 12 août 2026
+
+| Décision | Conséquence |
+|---|---|
+| **Les propriétaires ont des entrées gratuites au cinéma et à la patinoire, et ces entrées sont comptées** | Nouveau module : droits par saison, billets à usage unique, contrôle à l'entrée. Le décompte impose un serveur qui arbitre — voir §7 bis. **+1 semaine**, la seule du plan qui ne se finance pas par un troc |
+
+Le nombre d'entrées n'est pas figé dans le code : c'est un **paramètre de saison**, réglé par
+l'office depuis son back-office. La maquette affiche cinq à titre d'exemple.
 
 ---
 
@@ -36,6 +48,9 @@ copropriété et le durcissement sécurité. Les 8 semaines tiennent.
 | H5 | CGU et mentions légales fournies par le client en S1 | mise en ligne décalée |
 | H6 | Pas d'interconnexion avec un PMS/channel manager en v1 | à chiffrer séparément |
 | H7 | Deux propriétaires maximum par logement, sans quote-part à gérer | au-delà, arbitrages à revoir |
+| H8 | Les entrées gratuites sont un quota par saison et par propriétaire, identique pour tous | un barème variable (selon le nombre de lits, l'ancienneté) se code, mais il faut le connaître en S1 |
+| H9 | Les points de contrôle (cinéma, patinoire) ont un accès Internet, même intermittent | sans réseau du tout, le contrôle en ligne est impossible : voir §7 bis, le mode dégradé devient obligatoire |
+| H10 | Un billet consommé n'est pas remboursable, et une entrée non utilisée est perdue en fin de saison | si l'office veut des reports ou des annulations après scan, à préciser |
 
 ---
 
@@ -166,6 +181,48 @@ model Adhesion {
   @@unique([organizationId, season])
 }
 
+// ------------------------------------------------------------------ avantages
+// Le quota est porté par la saison, pas par le code : l'office le règle sans déploiement.
+model Advantage {
+  id          String   @id @default(cuid())
+  season      String   // "2026-2027"
+  code        String   // "RUITOR" | "PATINOIRE"
+  label       String   // "Espace Culturel Le Ruitor"
+  description String
+  quota       Int      // entrées gratuites par propriétaire et par saison
+  activeFrom  DateTime
+  activeTo    DateTime
+  tickets     Ticket[]
+  @@unique([season, code])
+}
+
+model Ticket {
+  id             String       @id @default(cuid())
+  advantageId    String
+  organizationId String       // à qui appartient l'entrée consommée
+  issuedByUserId String       // lequel des deux copropriétaires l'a édité
+  token          String       @unique   // 20 caractères, tirés d'un CSPRNG, sans signification
+  status         TicketStatus // ISSUED | CONSUMED | CANCELLED
+  issuedAt       DateTime     @default(now())
+  consumedAt     DateTime?
+  consumedByUserId String?    // l'agent qui a scanné
+  consumedAtPoint  String?    // "RUITOR" | "PATINOIRE"
+  advantage      Advantage    @relation(fields: [advantageId], references: [id])
+  @@index([organizationId, advantageId, status])
+}
+
+// Toute présentation d'un code, acceptée ou non. Sert au comptage, aux litiges,
+// et à repérer une salve de codes inventés.
+model ScanAttempt {
+  id            String   @id @default(cuid())
+  token         String
+  point         String
+  verdict       String   // OK | ALREADY_USED | UNKNOWN | OUT_OF_SEASON | CANCELLED
+  scannedByUserId String?
+  createdAt     DateTime @default(now())
+  @@index([token, createdAt])
+}
+
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
@@ -227,6 +284,7 @@ gestion, et plus de deux propriétaires. Le modèle les accueille, l'interface n
 - `/espace/logements/[id]/proprietaires` — copropriétaire : inviter, retirer, voir le statut
 - `/invitation/[token]` — page d'acceptation d'une invitation de copropriété
 - `/espace/adhesion` — CGU de la saison, envoi du dossier, suivi (sans paiement en v1)
+- `/espace/avantages` — droits de la saison, édition d'un billet, code QR, annulation
 
 ### Back-office OT (`/admin`, rôles `OT_STAFF` / `OT_ADMIN`)
 - `/admin` — file d'attente des dossiers à traiter
@@ -235,6 +293,8 @@ gestion, et plus de deux propriétaires. Le modèle les accueille, l'interface n
 - `/admin/adhesions` — suivi par saison, relances
 - `/admin/exports` — CSV propriétaires / logements / adhésions
 - `/admin/journal` — journal d'audit (`OT_ADMIN` uniquement)
+- `/admin/controle` — contrôle à l'entrée : scan, verdict, historique du poste
+- `/admin/avantages` — barème de la saison : équipements, quotas, dates d'ouverture
 
 ---
 
@@ -291,6 +351,15 @@ gestion, et plus de deux propriétaires. Le modèle les accueille, l'interface n
 - Responsive et accessibilité (navigation clavier, contrastes, labels)
 - Tests end-to-end Playwright sur les 5 parcours critiques
 
+### S7 bis — Avantages, billets et contrôle *(semaine ajoutée le 12 août)*
+- Barème de saison paramétrable par l'office : équipements, quotas, période de validité
+- Édition d'un billet, décompte du droit, annulation d'un billet non consommé
+- Génération du code QR **côté serveur**, rendu en SVG dans la page et dans l'e-mail
+- Écran de contrôle : scan, consommation atomique, verdicts distincts, journalisation de
+  **toutes** les présentations, y compris les refus
+- Mode dégradé hors ligne (voir §7 bis) et sa synchronisation
+- **Livrable : un billet édité, scanné, refusé au second passage, et le compteur qui suit**
+
 ### S8 — Recette et mise en production
 - Reprise des données propriétaires existants (script de migration + e-mail d'activation)
 - Recette client, correctifs
@@ -331,6 +400,89 @@ pas le paiement lui-même.
 
 ---
 
+## 7 bis. Avantages, billets et contrôle à l'entrée *(décision du 12 août)*
+
+Chaque propriétaire adhérent dispose d'un nombre d'entrées gratuites par saison, au cinéma
+de l'Espace Culturel Le Ruitor et à la patinoire de La Rosière. **Ces entrées sont comptées.**
+C'est cette phrase qui commande toute l'architecture du module : dès qu'on compte, il faut un
+arbitre, et l'arbitre ne peut pas être le navigateur du propriétaire.
+
+### 7 bis.1 Le principe : le billet ne prouve rien, il désigne
+
+Un billet est un **jeton opaque** de vingt caractères, tiré d'un générateur cryptographique.
+Il ne contient ni le nom du porteur, ni le solde restant, ni une signature vérifiable hors
+ligne. Il ne dit rien : il désigne une ligne en base, et c'est le serveur qui répond.
+
+Ce choix est ce qui rend la fraude sans objet :
+
+| Tentative | Ce qui se passe |
+|---|---|
+| Fabriquer un code QR | Le jeton n'existe pas en base : refus, et la tentative est journalisée |
+| Modifier le compteur dans le navigateur | L'écran affiche ce qu'il veut ; l'API refuse au-delà du quota |
+| Photographier le billet d'un ami | Le premier scan consomme le billet, le second est refusé — la copie ne crée rien |
+| Rejouer un billet déjà scanné | Refus, avec la date et le poste du premier passage |
+| Scanner deux fois dans la même seconde | Un seul passe : la consommation est une transaction avec verrou |
+
+### 7 bis.2 La consommation, en une transaction
+
+Le point qui fait la différence entre « compté » et « à peu près compté » :
+
+```sql
+-- verrou de ligne : la seconde requête attend, puis constate que le billet est consommé
+BEGIN;
+SELECT status FROM "Ticket" WHERE token = $1 FOR UPDATE;
+UPDATE "Ticket" SET status = 'CONSUMED', "consumedAt" = now(), ...
+  WHERE token = $1 AND status = 'ISSUED';
+COMMIT;
+```
+
+L'`UPDATE` conditionné sur `status = 'ISSUED'` est la garantie : si zéro ligne est modifiée,
+le billet était déjà consommé, et le verdict est un refus. Même chose à l'édition, où le
+quota se vérifie **dans la transaction** qui crée le billet, jamais avant.
+
+### 7 bis.3 Le matériel de contrôle
+
+L'écran `/admin/controle` est une page web ordinaire, ouverte sur le poste d'accueil. Deux
+manières de saisir, sans application à installer :
+
+- **Douchette USB** en mode clavier — elle tape le code dans le champ et valide. C'est le plus
+  fiable, le moins cher, et ça ne dépend d'aucune permission de navigateur. **Recommandé.**
+- **Appareil photo du téléphone**, via l'API de détection de codes-barres intégrée aux
+  navigateurs récents. Pratique en secours ou pour un contrôle mobile.
+
+Le code QR affiché par le propriétaire est généré **côté serveur** et rendu en SVG : la page
+n'embarque pas de bibliothèque de génération, et le même code part dans l'e-mail de
+confirmation.
+
+### 7 bis.4 Le réseau tombe. Et alors ?
+
+C'est la seule question de ce module qui n'a pas de bonne réponse, seulement un arbitrage à
+rendre par l'office :
+
+| Option | Ce qu'on y gagne | Ce qu'on y perd |
+|---|---|---|
+| **Refus hors ligne** | Aucun billet ne passe deux fois, jamais | Une coupure de réseau bloque l'entrée : file d'attente, propriétaires mécontents |
+| **Acceptation optimiste** | L'entrée fonctionne toujours | Pendant la coupure, un billet peut passer deux fois ; la synchronisation le détecte après coup, trop tard |
+
+**Ma recommandation : l'acceptation optimiste, avec une trace.** Le poste garde en mémoire les
+jetons consommés hors ligne et les rejoue dès le retour du réseau. Les doublons apparaissent
+alors au journal, et l'office décide s'il veut en faire quelque chose. Refuser l'entrée à un
+propriétaire à cause d'une coupure de réseau coûte plus cher à l'office qu'une place de cinéma
+offerte deux fois — et un cinéma de station n'a pas de siège numéroté à protéger.
+
+Cette recommandation suppose H9 : un réseau qui revient. Si un point de contrôle n'a jamais
+de réseau, le mode dégradé cesse d'être un secours et devient le fonctionnement normal, avec
+un jeu de jetons pré-synchronisé chaque matin. À dire en S1, pas en décembre.
+
+### 7 bis.5 Ce que le module ne fait pas en v1
+
+Pas de transfert de billet à un tiers, pas de billet nominatif avec photo, pas de contrôle
+d'identité à l'entrée. Un billet appartient à l'organisation du propriétaire ; si la famille
+se le passe, le quota s'épuise pareil, ce qui suffit à protéger l'office. Le jour où l'usage
+montre un abus, le nom du porteur s'affiche sur le billet en une journée de travail.
+
+---
+
 ## 8. Sécurité — livrable à part entière *(décision du 5 août)*
 
 Ce tableau n'est pas une liste d'intentions : **c'est le référentiel de recette**. Chaque ligne
@@ -364,6 +516,17 @@ Trois points qui ne corrigent pas TignesPro mais qui relèvent du même niveau d
 
 ---
 
+### 8.2 Critères propres aux billets
+
+| Ce qu'on garantit | Comment le vérifier |
+|---|---|
+| Un billet ne passe qu'une fois | Scanner deux fois le même code : le second est refusé, avec la date du premier |
+| Deux scans simultanés ne passent pas tous les deux | Envoyer deux requêtes concurrentes sur le même jeton : une seule réussit (verrou en base) |
+| Le quota ne se contourne pas depuis le navigateur | Appeler l'API d'édition en boucle hors interface : refus au-delà du quota de la saison |
+| Le code QR ne porte aucun droit | Décoder un billet : on n'y trouve qu'un jeton opaque, ni identité, ni solde, ni signature réutilisable |
+| Un jeton n'est pas devinable | 20 caractères d'un générateur cryptographique : deviner un billet valable est hors de portée d'une attaque par essais, et le rate-limiting du poste de contrôle ferme la porte |
+| Toute présentation est tracée | Scanner un code inventé : la tentative apparaît au journal avec l'heure et le poste |
+
 ## 9. Ce que le client doit fournir, et quand
 
 | Quand | Quoi | Bloque |
@@ -375,6 +538,8 @@ Trois points qui ne corrigent pas TignesPro mais qui relèvent du même niveau d
 | S2 | Accès domaine / DNS | S7 (e-mails), S8 |
 | S6 | Liste des documents obligatoires par logement | S5, S6 |
 | S6 | Comptes des agents OT à créer | S8 |
+| S1 | **Barème des entrées gratuites** : combien par équipement, par saison | S7 bis |
+| S6 | **Points de contrôle** : qui scanne, sur quel matériel, avec quel réseau | S7 bis |
 
 ---
 
@@ -401,14 +566,23 @@ de tiers, reversements. À chiffrer séparément, jamais à glisser dans ce pér
 | Recette client lente | Moyenne | Environnement de recette dès S1, validation en continu |
 | Données existantes inexploitables | Moyenne | Vue du fichier en S1, sinon inscription manuelle des propriétaires |
 | Périmètre qui s'élargit en cours de route | Élevée | Périmètre figé en S1, tout ajout part en phase 2 |
-| Fenêtre saison d'hiver manquée | Faible si S1 tient | Mise en ligne visée début octobre, 2 mois de marge avant décembre |
+| Fenêtre saison d'hiver manquée | Faible si S1 tient | Mise en ligne visée fin octobre, six semaines de marge avant le 12 décembre |
+| Réseau absent au point de contrôle | Moyenne | Mode dégradé décidé en S1, pas découvert le soir de l'ouverture — voir §7 bis |
+| Barème des entrées non arrêté | Moyenne | Le module se livre avec un quota paramétrable : l'office peut le fixer après la mise en ligne, sans déploiement |
 
 ---
 
 ## 12. Étape suivante
 
-Validation de ce plan → je monte le socle (S1) : repo, Next.js, Postgres, schéma Prisma,
-CI et environnement de recette en ligne, prêt à recevoir les maquettes.
+**Aujourd'hui**, le dossier est complet : cette analyse, ce plan, et une maquette manipulable
+en ligne qui rend vérifiables les promesses du §8. Rien n'attend plus de mon côté.
+
+**La prochaine décision appartient à l'office** : valider le périmètre et le calendrier. Tant
+qu'elle n'est pas prise, construire le socle revient à parier sur un périmètre non confirmé.
+
+**Au feu vert**, S1 démarre : dépôt, Next.js, Postgres, schéma Prisma, intégration continue et
+environnement de recette en ligne — plus les trois ouvertures de comptes du §12 ter, qui
+conditionnent tout le reste et prennent une demi-journée si les accès DNS sont disponibles.
 
 ---
 
@@ -433,6 +607,8 @@ promesses de sécurité du §8 au lieu de les affirmer.
 | Mot de passe oublié | Réponse identique que l'adresse existe ou non, testable en un clic |
 | Second facteur | Code à six chiffres imposé à l'agent, sans contournement |
 | Traceurs | Compteur des requêtes réellement parties du navigateur, lu dans l'API de performance |
+| Avantages | Édition d'un billet, code QR généré dans la page, décompte du droit, annulation |
+| Contrôle à l'entrée | Scan d'un billet : autorisé, puis refusé au second passage, refusé si le code est inventé |
 | Recette | Les treize constats du §8, dont sept avec un bouton qui ouvre la preuve |
 
 **Ce qu'elle ne fait pas, et ne peut pas faire.** Aucun serveur, aucune base, aucun service
@@ -444,6 +620,75 @@ sur l'environnement de recette de la S1, pas avant.
 
 Les données y sont fictives, y compris les huit propriétaires de l'annuaire, qui n'existent
 que pour donner de la matière à la recherche et à l'export.
+
+---
+
+## 12 ter. De la maquette au site en ligne
+
+La maquette est une façade : un fichier, aucun serveur. Voici ce qu'il faut monter pour que
+la même chose fonctionne pour de vrai, et qui fournit quoi.
+
+### Ce qu'il faut ouvrir, et qui le fait
+
+| Quoi | Qui | Coût indicatif | Bloque |
+|---|---|---|---|
+| **Nom de domaine** (ex. `espace.larosiere.net`, sous-domaine du domaine existant) | l'office | inclus s'il s'agit d'un sous-domaine | tout le reste |
+| **Accès DNS** pour poser les enregistrements | l'office | — | e-mails, certificat |
+| **Hébergement applicatif** Scaleway Serverless Containers, Paris | vous ou l'office | ~10-20 €/mois | déploiement |
+| **PostgreSQL managé**, Paris | idem | ~15-25 €/mois | tout |
+| **Stockage objet** S3, Paris, bucket privé | idem | ~1-5 €/mois selon volume | dépôt des pièces |
+| **Service d'envoi** Resend ou Brevo, domaine authentifié | idem | 0 à 20 €/mois | vérification d'adresse, notifications |
+| **Supervision** (Sentry ou équivalent, hébergement UE) | vous | 0 à 25 €/mois | rien, mais on vole à vue sans |
+
+**Ordre de grandeur : 30 à 70 € par mois**, tout compris, pour quelques milliers de
+propriétaires. Un compte doit être ouvert par l'office, ou par vous à son nom : c'est lui qui
+doit rester propriétaire des accès le jour où il change de prestataire. **Ne pas héberger la
+production sur un compte personnel de développeur** — c'est la dépendance qui coince trois ans
+plus tard.
+
+### Le domaine et les e-mails
+
+Trois enregistrements DNS à poser avant la première invitation :
+
+- **SPF** — autorise le service d'envoi à écrire au nom du domaine ;
+- **DKIM** — signe chaque message, pour qu'il ne soit pas réécrit en route ;
+- **DMARC** — dit aux serveurs destinataires quoi faire d'un message non conforme, et où
+  envoyer les rapports.
+
+Sans ces trois-là, les e-mails d'activation partent en indésirables, et la reprise du fichier
+des propriétaires (§13.8) échoue silencieusement : deux cents propriétaires qui ne reçoivent
+rien, et un secrétariat qui reçoit deux cents appels.
+
+### Le déploiement
+
+- **Une branche, un environnement.** `main` déploie en recette à chaque fusion ; une étiquette
+  de version déploie en production, sur décision humaine.
+- **La CI refuse de déployer** si le lint, les types, les tests ou les migrations échouent.
+- **Migrations jouées automatiquement** au déploiement, jamais à la main (§13.4).
+- **Retour arrière** : la version précédente reste déployable en un clic. Une migration
+  destructive se fait en deux temps pour que ce retour reste possible.
+
+### Ce qu'il faut surveiller
+
+| Quoi | Pourquoi |
+|---|---|
+| Erreurs applicatives | Une erreur silencieuse en production est une donnée perdue |
+| Taux d'échec des e-mails | Un domaine qui se met à rebondir se répare en heures, pas en semaines |
+| Temps de réponse de l'API de contrôle | Un scan qui prend trois secondes fait une file à l'entrée du cinéma |
+| Sauvegardes | Une sauvegarde qui n'a pas tourné se voit le jour où on en a besoin, sauf si on la surveille |
+| Certificat TLS | Renouvellement automatique, avec alerte à J-15 s'il ne s'est pas renouvelé |
+
+### Après la mise en ligne
+
+Ce plan couvre la livraison, pas la vie de l'application. À prévoir séparément, et à dire
+maintenant plutôt qu'à découvrir en janvier :
+
+- **Correctifs de sécurité des dépendances** : quelques heures par mois, à budgéter ;
+- **Une astreinte pendant la saison**, ou au minimum un engagement de délai de réponse — un
+  espace propriétaires en panne le 20 décembre n'attend pas le lundi ;
+- **La saison suivante** : ouvrir 2027-2028, reconduire les barèmes, archiver l'ancienne.
+  Une demi-journée par an si le modèle est bien fait, ce qu'il est : la saison est une donnée,
+  pas une constante dans le code.
 
 ---
 
