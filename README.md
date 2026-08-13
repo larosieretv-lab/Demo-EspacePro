@@ -11,17 +11,18 @@ comparable de la station voisine qui a servi de point de départ.
 | Fichier | Ce que c'est |
 |---|---|
 | [`index.html`](index.html) | La maquette. Un fichier unique, à ouvrir dans un navigateur. |
-| [`plan-implementation.md`](plan-implementation.md) | Le plan de réalisation : périmètre, modèle de données, planning en 8 semaines, sécurité, exploitation de la base. |
+| [`plan-implementation.md`](plan-implementation.md) | Le plan de réalisation : périmètre, modèle de données, planning en 9 semaines, sécurité, exploitation de la base. |
 | [`analyse-tignespro.md`](analyse-tignespro.md) | L'analyse de TignesPro, relevée de l'extérieur le 4 août 2026. Elle fournit les treize constats qui deviennent des critères de recette au §8 du plan. |
 | [`trame-demonstration.md`](trame-demonstration.md) | Le déroulé de la démonstration en dix minutes : quoi cliquer, quoi dire, quoi faire faire, et quoi ne pas promettre. |
 
 ## La maquette
 
 Elle sert à discuter d'écrans réels plutôt que de captures, et à rendre vérifiables les
-promesses de sécurité au lieu de les affirmer. Douze parcours s'y manipulent — création de
+promesses de sécurité au lieu de les affirmer. Quatorze parcours s'y manipulent — création de
 compte, vérification SIRET contre l'annuaire des entreprises de l'État, déclaration d'un
 logement, invitation d'un copropriétaire, instruction et refus motivé côté office, échéances
-d'assurance, annuaire avec exports, verrouillage après cinq échecs de connexion, réponse
+d'assurance, billets d'entrée avec code QR et contrôle à l'entrée, annuaire avec exports,
+verrouillage après cinq échecs de connexion, réponse
 muette du mot de passe oublié, second facteur imposé aux agents, compteur de requêtes
 tierces, écran de recette.
 
