@@ -872,8 +872,8 @@
     // utilisé rend le droit. Dans le produit, ces compteurs vivent en base, pas ici.
     avantages: {
       droits: [
-        { id: "ruitor", nom: "Espace Culturel Le Ruitor", quota: 5, detail: "Une séance de cinéma — deux salles, du lundi au vendredi" },
-        { id: "patinoire", nom: "Patinoire de La Rosière", quota: 5, detail: "Entrée avec location de patins" }
+        { id: "ruitor", nom: "Espace Culturel Le Ruitor", quota: 5, detail: "Entrée gratuite au cinéma — deux salles, du lundi au vendredi" },
+        { id: "patinoire", nom: "Patinoire de La Rosière", quota: 5, detail: "Entrée gratuite à la patinoire" }
       ],
       billets: []
     },
@@ -1613,7 +1613,7 @@
           <div class="bar" style="display:flex;justify-content:space-between;align-items:baseline;padding-bottom:11px;border-bottom:2px solid var(--ink)"><h2>Ce que l'adhésion vous ouvre</h2></div>
           <div class="rows">
             ${[
-              ["Tarif propriétaire", "Sur le forfait Espace San Bernardo, La Rosière et La Thuile."],
+              ["Entrées gratuites", "Au cinéma de l'Espace Culturel Le Ruitor et à la patinoire de La Rosière. Vos billets se trouvent dans « Mes avantages »."],
               ["Visibilité", "Votre logement apparaît sur les supports de communication de l'office."],
               ["Accompagnement", "Classement meublé, déclaration en mairie, taxe de séjour."]
             ].map(([t, d]) => `<div class="row"><div class="grow"><div class="title">${t}</div><div class="sub" style="font-size:13.5px;color:var(--ink-2);line-height:1.5">${d}</div></div></div>`).join("")}
@@ -1697,13 +1697,13 @@
                 </div>
               </div>`).join("")}</div>`
           : `<div class="msg" style="margin-top:18px"><strong>Aucun billet édité.</strong> Vos droits restent entiers : un billet ne s'édite qu'au moment d'y aller.</div>`}
-        <p class="small" style="margin-top:16px">Les entrées sont attachées à l'adhésion de la saison ${esc(state.adhesion.season)} et ne se reportent pas d'une saison sur l'autre.</p>
+        <p class="small" style="margin-top:16px">Les entrées sont attachées à votre adhésion de la saison ${esc(state.adhesion.season)} et ne se reportent pas d'une saison sur l'autre.</p>
       </div>`;
 
     return `
       <div class="head"><div>
         <h1>Mes avantages</h1>
-        <p class="lede">Vos entrées de la saison. Un billet s'édite au moment d'y aller, se présente à l'entrée, et ne sert qu'une fois.</p>
+        <p class="lede">Vos entrées gratuites de la saison, au cinéma et à la patinoire. Un billet s'édite au moment d'y aller, se présente à l'entrée, et ne sert qu'une fois.</p>
       </div></div>
       ${vue}`;
   };
