@@ -6,13 +6,14 @@ comparable de la station voisine qui a servi de point de départ.
 
 **Ce dépôt n'est pas le produit.** C'est le dossier d'une proposition.
 
-## Les trois pièces
+## Les quatre pièces
 
 | Fichier | Ce que c'est |
 |---|---|
 | [`index.html`](index.html) | La maquette. Un fichier unique, à ouvrir dans un navigateur. |
 | [`plan-implementation.md`](plan-implementation.md) | Le plan de réalisation : périmètre, modèle de données, planning en 8 semaines, sécurité, exploitation de la base. |
 | [`analyse-tignespro.md`](analyse-tignespro.md) | L'analyse de TignesPro, relevée de l'extérieur le 4 août 2026. Elle fournit les treize constats qui deviennent des critères de recette au §8 du plan. |
+| [`trame-demonstration.md`](trame-demonstration.md) | Le déroulé de la démonstration en dix minutes : quoi cliquer, quoi dire, quoi faire faire, et quoi ne pas promettre. |
 
 ## La maquette
 
