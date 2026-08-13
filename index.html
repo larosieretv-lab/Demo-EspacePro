@@ -1086,22 +1086,15 @@
       <p class="lede">Cet espace réunit tout ce que l'office de tourisme vous demande une fois par an : vos logements, vos justificatifs, votre adhésion.</p>
     </div></div>
 
-    <div class="cols3">
+    <div style="max-width:620px">
       <div class="profilecard">
-        <span class="n">Ouvert</span>
+        <span class="n">Saison ${esc(state.adhesion.season)}</span>
         <h2>Vous êtes propriétaire</h2>
         <p style="font-size:14.5px;color:var(--ink-2)">Vous louez un meublé sur la commune. Déclarez vos biens, déposez vos pièces, suivez votre adhésion à la saison.</p>
-        <div style="margin-top:6px"><button class="btn btn-1" data-go="connexion">Entrer dans mon espace</button></div>
-      </div>
-      <div class="profilecard off">
-        <span class="n">Phase 2</span>
-        <h2>Vous êtes socioprofessionnel</h2>
-        <p style="font-size:14.5px">Vérification du SIRET, plusieurs établissements sous une même structure, adhésion facturée au barème.</p>
-      </div>
-      <div class="profilecard off">
-        <span class="n">Phase 2</span>
-        <h2>Vous travaillez à l'office</h2>
-        <p style="font-size:14.5px">Espace interne : documents, plannings de saison, ressources de l'équipe.</p>
+        <div class="flexrow" style="margin-top:6px">
+          <button class="btn btn-1" data-go="connexion">Entrer dans mon espace</button>
+          <button class="btn btn-2" data-go="inscription">Créer un compte</button>
+        </div>
       </div>
     </div>
 `;
@@ -2193,7 +2186,7 @@
     return `
       <div class="head"><div>
         <h1>Vérification SIRET</h1>
-        <p class="lede">Prévu pour les socioprofessionnels, en phase 2. Ici en vrai : la saisie appelle l'API Recherche d'entreprises de l'État, et les règles métier s'appliquent sur la réponse.</p>
+        <p class="lede">Pour les propriétaires qui déclarent en société ou en SCI. La saisie appelle l'API Recherche d'entreprises de l'État, et les règles métier s'appliquent sur la réponse.</p>
       </div></div>
 
       <div class="cols">
